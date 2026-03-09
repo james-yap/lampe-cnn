@@ -1,0 +1,10 @@
+[project]
+name = "lampe_cnn"
+version = "0.1.0"
+description = "Label-free histological identification of intraductal carcinoma of the prostate using deep learning on multimodal stimulated Raman scattering microscopy (LAMPE Lab @ Carleton University)"
+readme = "README.md"
+requires-python = ">=3.13"
+dependencies = [
+    "numpy>=2.4.3",
+    "scipy>=1.17.1",
+]
