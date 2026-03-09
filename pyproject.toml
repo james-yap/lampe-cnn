@@ -5,6 +5,7 @@ description = "Label-free histological identification of intraductal carcinoma o
 readme = "README.md"
 requires-python = ">=3.13"
 dependencies = [
+    "matplotlib>=3.10.8",
     "numpy>=2.4.3",
     "scipy>=1.17.1",
 ]
