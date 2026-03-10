@@ -15,14 +15,15 @@ print(shg_images.shape)
 
 # Using matplotlib
 fig, axes = plt.subplots(1, 3, figsize=(15,5))
+image_num = 12
 
-srs_1450 = axes[0].imshow(srs_1450_images[:,:,5], cmap='jet')
+srs_1450 = axes[0].imshow(srs_1450_images[:,:,image_num], cmap='jet')
 axes[0].set_title('SRS 1450 cm$^{-1}$')
 
-srs_1668 = axes[1].imshow(srs_1668_images[:,:,5], cmap='jet')
+srs_1668 = axes[1].imshow(srs_1668_images[:,:,image_num], cmap='jet')
 axes[1].set_title('SRS 1668 cm$^{-1}$')
 
-shg = axes[2].imshow(shg_images[:,:,5], cmap='jet')
+shg = axes[2].imshow(shg_images[:,:,image_num], cmap='jet')
 axes[2].set_title('SHG')
 
 plt.tight_layout()
