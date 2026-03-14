@@ -1,0 +1,7 @@
+Project idea is interesting. It is nice you are working with a research group at Carleton for this.
+
+For a group of three, just fine-tuning pre-trained CNN architectures on an existing dataset is not enough for the project. Please make sure you also implement the proposed automatic feature selection approach, multi-modal fusion approach, and the proposed GradCAM approach.
+
+Cross-validation strategy seems reasonable. What measures of performance will you use?
+
+Novelty and timeline are both reasonable.
