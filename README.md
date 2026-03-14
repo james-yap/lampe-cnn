@@ -29,3 +29,11 @@ uv run playground/scipy_matlab_example.py
 - `docs/`: Documentation files, including original LAMPE research paper and dataset/methodology descriptions.
 - `playground/`: Jupyter notebooks and scripts for data exploration, preprocessing, and model development.
 - `lampe_dataset/`: Place the dataset here. Multimodal stimulated Raman scattering microscopy images (not tracked by Git) used to train the CNN.
+
+## Trial Matrix
+
+| Technique | Accuracy | Notes |
+|:---:|:---:|:---:|
+| Vanilla (use "3x3 bad SHG removed") | ? | Establish baseline |
+| Native ResNet50 resolution (224 x 224) | ? | Combine with sliding window approach on full images |
+| StratifiedGroupKFold | ? | Ensure balanced representation of classes and groups in training/validation splits (intracore bias) |
