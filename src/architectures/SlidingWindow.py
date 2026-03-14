@@ -7,7 +7,7 @@ class SlidingWindowDataset(Dataset[torch.Tensor]):
     A custom PyTorch Dataset that implements a sliding window approach to extract patches
     from a 3D image matrix (H, W, N samples).
     """
-    def __init__(self, image_matrix, window_size=224, stride=96):
+    def __init__(self, image_matrix: np.ndarray, window_size: int = 224, stride: int = 96):
         """
         Args:
             image_matrix (numpy array): The input image matrix of shape (H, W, N samples).
@@ -23,7 +23,7 @@ class SlidingWindowDataset(Dataset[torch.Tensor]):
         self.H, self.W, self.num_samples = image_matrix.shape
 
         # Pre-compute all top-left (y, x) coordinates for our patches
-        self.coords = []
+        self.coords: list[tuple[int, int]] = []
         for y in range(0, self.H - self.window_size + 1, self.stride):
             for x in range(0, self.W - self.window_size + 1, self.stride):
                 self.coords.append((y, x))
@@ -33,7 +33,7 @@ class SlidingWindowDataset(Dataset[torch.Tensor]):
     def __len__(self):
         return self.num_patches_per_sample * self.num_samples
     
-    def __getitem__(self, idx):
+    def __getitem__(self, idx: int) -> torch.Tensor:
         # 1. Figure out which sample and which coordinate this index belongs to
         sample_idx = idx // self.num_patches_per_sample
         coord_idx = idx % self.num_patches_per_sample
