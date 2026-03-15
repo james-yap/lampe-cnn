@@ -14,14 +14,12 @@ class MatReader:
     Automatically groups data by patient to prevent intracore bias.
     """
 
-    data: dict[str, np.ndarray]
+    # shape: (n patients, np.ndarray(n samples per patient, width, height, n modalities))
+    data: list[np.ndarray]
 
     def __init__(self, matpath: str):
         classes = ["Healthy", "HGC", "IDC", "LGC"]
-        # classes = ["Healthy"]
         modalities = ["1450_bgsub", "1668_bgsub", "SHG"]
-
-        self.data = {}
 
         # Verify files exist
         for classname in classes:
@@ -61,5 +59,19 @@ class MatReader:
 
                 multimodal_data = np.stack(mode_data_images, axis=-1) # (width, height, n samples, n modalities)
                 multimodal_data = np.transpose(multimodal_data, (2, 0, 1, 3)) # (n samples, width, height, n modalities)
+                
+                stratified_images: dict[str, list[np.ndarray]] = {}
+                for multimodal_image, [slide_num, slide_pos, _class, _fov_num] in zip(multimodal_data, names):
+                    patient_id = f"{slide_num}_{slide_pos}"
+                    if patient_id not in stratified_images:
+                        stratified_images[patient_id] = []
+                    stratified_images[patient_id].append(multimodal_image)
+                
+                self.data = [np.stack(images, axis=0) for images in stratified_images.values()] # list of (n samples per patient, width, height, n modalities)
 
-                self.data[classname] = multimodal_data
+    def get_data(self) -> list[np.ndarray]:
+        """
+        Returns the loaded data as a list of numpy arrays,
+        where each array corresponds to a patient and has shape (n samples per patient, width, height, n modalities).
+        """
+        return self.data
