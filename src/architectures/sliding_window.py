@@ -2,6 +2,8 @@ import numpy as np
 import torch
 from torch.utils.data import Dataset, DataLoader
 
+from shared.mat_reader import MatReader
+
 class SlidingWindowDataset(Dataset[torch.Tensor]):
     """
     A custom PyTorch Dataset that implements a sliding window approach to extract patches
@@ -51,3 +53,5 @@ class SlidingWindowDataset(Dataset[torch.Tensor]):
         patch_tensor = patch_tensor.unsqueeze(0)
         
         return patch_tensor
+
+print(MatReader('lampe_dataset/Full images').get_data())
