@@ -95,3 +95,11 @@ uv run lampe-cli inference
 | Vanilla (use "3x3 bad SHG removed") | ? | Establish baseline |
 | Native ResNet50 resolution (224 x 224) | ? | Combine with sliding window approach on full images |
 | StratifiedGroupKFold | ? | Ensure balanced representation of classes and groups in training/validation splits (intracore bias) |
+
+### Notes
+
+- [ ] Normalization: Per-channel mean/std normalization based on training set statistics (not from ResNet)
+- [ ] Learning rate scheduling: Experiment with schedulers (e.g. StepLR, CosineAnnealingLR) to improve convergence
+- [ ] Geometric Augmentation
+- [ ] Accuracy, recall, precision, F1 score (due to class imbalance)
+- [ ] [ROC and AUC](https://developers.google.com/machine-learning/crash-course/classification/roc-and-auc)

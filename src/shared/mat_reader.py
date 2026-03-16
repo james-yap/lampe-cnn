@@ -5,7 +5,8 @@ MatReader class implementation.
 import os
 from typing import Any, cast
 import numpy as np
-from scipy.io import loadmat # type: ignore
+from scipy.io import loadmat  # type: ignore
+
 
 class MatReader:
     """
@@ -16,18 +17,18 @@ class MatReader:
 
     # shape: np.ndarray(n samples, n modalities, width, height)
     images: np.ndarray
-    
+
     # shape: np.ndarray(n samples,)
     # 0: Healthy, 1: HGC, 2: IDC, 3: LGC
     class_labels: np.ndarray
-    
+
     # shape: np.ndarray(n samples,)
     patient_ids: np.ndarray
 
     def __init__(self, matpath: str):
         classes = ["Healthy", "HGC", "IDC", "LGC"]
         modalities = ["1450_bgsub", "1668_bgsub", "SHG"]
-        
+
         images_list: list[np.ndarray] = []
         labels_list: list[int] = []
         ids_list: list[str] = []
@@ -36,19 +37,27 @@ class MatReader:
         for classname in classes:
             mat_filename = f"{classname}_bulk_data.mat"
             if not os.path.isfile(os.path.join(matpath, mat_filename)):
-                raise FileNotFoundError(f"Expected file '{mat_filename}' not found in path '{matpath}'")
+                raise FileNotFoundError(
+                    f"Expected file '{mat_filename}' not found in path '{matpath}'"
+                )
 
             names_filename = f"{classname}_names.txt"
             if not os.path.isfile(os.path.join(matpath, names_filename)):
-                raise FileNotFoundError(f"Expected file '{names_filename}' not found in path '{matpath}'")
+                raise FileNotFoundError(
+                    f"Expected file '{names_filename}' not found in path '{matpath}'"
+                )
 
         for classname in classes:
             mat_filename = f"{classname}_bulk_data.mat"
             names_filename = f"{classname}_names.txt"
 
-            raw_data: dict[str, Any] = cast(dict[str, Any], loadmat(os.path.join(matpath, mat_filename)))
+            raw_data: dict[str, Any] = cast(
+                dict[str, Any], loadmat(os.path.join(matpath, mat_filename))
+            )
 
-            with open(os.path.join(matpath, names_filename), 'r', encoding='utf-8') as f:
+            with open(
+                os.path.join(matpath, names_filename), "r", encoding="utf-8"
+            ) as f:
                 # format: "1 B1 IDC 2": Slide number, position on slide, class, fov number
                 names = [line.strip().split() for line in f.readlines()]
 
@@ -63,14 +72,19 @@ class MatReader:
                             f"Expected 3D array for '{mode_key}', got shape {mode_data.shape}"
                         )
 
-                    assert len(names) == int(mode_data.shape[2]), \
-                          f"Number of names in '{names_filename}' does not match number of samples in '{mat_filename}' for modality '{mode}'"
+                    assert len(names) == int(
+                        mode_data.shape[2]
+                    ), f"Number of names in '{names_filename}' does not match number of samples in '{mat_filename}' for modality '{mode}'"
 
-                    mode_data_images.append(mode_data) # (width, height, n samples)
+                    mode_data_images.append(mode_data)  # (width, height, n samples)
 
-                multimodal_data = np.stack(mode_data_images, axis=-1) # (width, height, n samples, n modalities)
-                multimodal_data = np.transpose(multimodal_data, (2, 3, 0, 1)) # (n samples, n modalities, width, height)
-                
+                multimodal_data = np.stack(
+                    mode_data_images, axis=-1
+                )  # (width, height, n samples, n modalities)
+                multimodal_data = np.transpose(
+                    multimodal_data, (2, 3, 0, 1)
+                )  # (n samples, n modalities, width, height)
+
                 images_list.append(multimodal_data)
                 labels_list.extend([classes.index(classname)] * len(names))
                 ids_list.extend([name[0] for name in names])
@@ -79,12 +93,6 @@ class MatReader:
         self.class_labels = np.array(labels_list)
         self.patient_ids = np.array(ids_list)
 
-    def get_length(self) -> int:
-        """
-        Returns the total number of samples.
-        """
-        return len(self.images)
-    
     def get_dims(self) -> tuple[int, int, int, int]:
         """
         Returns the dimensions of the image data as (n samples, n modalities, width, height).
