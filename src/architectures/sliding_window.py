@@ -53,3 +53,23 @@ class SlidingWindowDataset(Dataset[Datapoint]):
         class_label = int(self.mat_reader.class_labels[fov_idx])
         patient_idx = int(self.mat_reader.patient_ids[fov_idx])
         return patch_tensor, class_label, patient_idx
+
+class EarlyStopping:
+    """
+    Stateful class to track validation loss and determine when to stop training early.
+    """
+    def __init__(self, patience=5, delta=0.001):
+        self.patience = patience
+        self.delta = delta
+        self.best_loss = float('inf')
+        self.counter = 0
+        self.early_stop = False
+
+    def __call__(self, val_loss):
+        if val_loss < self.best_loss - self.delta:
+            self.best_loss = val_loss
+            self.counter = 0
+        else:
+            self.counter += 1
+            if self.counter >= self.patience:
+                self.early_stop = True
