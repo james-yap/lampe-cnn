@@ -14,12 +14,23 @@ class MatReader:
     Automatically groups data by patient to prevent intracore bias.
     """
 
-    # shape: (n patients, np.ndarray(n samples per patient, width, height, n modalities))
-    data: list[np.ndarray]
+    # shape: np.ndarray(n samples, n modalities, width, height)
+    images: np.ndarray
+    
+    # shape: np.ndarray(n samples,)
+    # 0: Healthy, 1: HGC, 2: IDC, 3: LGC
+    class_labels: np.ndarray
+    
+    # shape: np.ndarray(n samples,)
+    patient_ids: np.ndarray
 
     def __init__(self, matpath: str):
         classes = ["Healthy", "HGC", "IDC", "LGC"]
         modalities = ["1450_bgsub", "1668_bgsub", "SHG"]
+        
+        images_list: list[np.ndarray] = []
+        labels_list: list[int] = []
+        ids_list: list[str] = []
 
         # Verify files exist
         for classname in classes:
@@ -58,20 +69,24 @@ class MatReader:
                     mode_data_images.append(mode_data) # (width, height, n samples)
 
                 multimodal_data = np.stack(mode_data_images, axis=-1) # (width, height, n samples, n modalities)
-                multimodal_data = np.transpose(multimodal_data, (2, 0, 1, 3)) # (n samples, width, height, n modalities)
+                multimodal_data = np.transpose(multimodal_data, (2, 3, 0, 1)) # (n samples, n modalities, width, height)
                 
-                stratified_images: dict[str, list[np.ndarray]] = {}
-                for multimodal_image, [slide_num, slide_pos, _class, _fov_num] in zip(multimodal_data, names):
-                    patient_id = f"{slide_num}_{slide_pos}"
-                    if patient_id not in stratified_images:
-                        stratified_images[patient_id] = []
-                    stratified_images[patient_id].append(multimodal_image)
-                
-                self.data = [np.stack(images, axis=0) for images in stratified_images.values()] # list of (n samples per patient, width, height, n modalities)
+                images_list.append(multimodal_data)
+                labels_list.extend([classes.index(classname)] * len(names))
+                ids_list.extend([name[0] for name in names])
 
-    def get_data(self) -> list[np.ndarray]:
+        self.images = np.concatenate(images_list, axis=0)
+        self.class_labels = np.array(labels_list)
+        self.patient_ids = np.array(ids_list)
+
+    def get_length(self) -> int:
         """
-        Returns the loaded data as a list of numpy arrays,
-        where each array corresponds to a patient and has shape (n samples per patient, width, height, n modalities).
+        Returns the total number of samples.
         """
-        return self.data
+        return len(self.images)
+    
+    def get_dims(self) -> tuple[int, int, int, int]:
+        """
+        Returns the dimensions of the image data as (n samples, n modalities, width, height).
+        """
+        return self.images.shape
