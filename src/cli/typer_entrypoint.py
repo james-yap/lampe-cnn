@@ -44,7 +44,7 @@ def train(
     architecture: Architecture,
     matpath: str,
     num_epochs: int = typer.Option(20, "-e", help="Number of training epochs"),
-    n_folds: int = typer.Option(5, "-f", help="Number of folds for cross-validation"),
+    n_folds: int = typer.Option(6, "-f", help="Number of folds for cross-validation"),
     batch_size: int = typer.Option(
         32, "-b", help="Batch size for training and validation"
     ),
@@ -61,6 +61,9 @@ def train(
     Uses StratifiedGroupKFold to ensure balanced representation of classes
     and groups in training/validation splits, preventing intracore bias.
     """
+
+    mat_reader = MatReader(matpath)
+
     hyperparams = {
         "architecture": architecture,
         "matpath": matpath,
@@ -73,6 +76,27 @@ def train(
     }
 
     start_time = datetime.now()
+    artifact_folder_path = os.path.join(
+        "artifacts",
+        f"{start_time:%m_%d-%H_%M}-{hyperparams['architecture'].value}",
+    )
+    os.makedirs(artifact_folder_path, exist_ok=True)
+
+    stub_dataset = sliding_window.SlidingWindowDataset(
+        mat_reader,
+        eff_fov_indices=[
+            0
+        ],  # use only the first FOV to compute num_patches_per_fov for hyperparameter logging
+        factor=hyperparams["sliding_factor"],
+    )
+    hyperparams["num_patches_per_fov"] = stub_dataset.num_patches_per_fov
+
+    with open(
+        os.path.join(artifact_folder_path, "hyperparams.json"),
+        "w",
+        encoding="utf-8",
+    ) as f:
+        json.dump(hyperparams, f, indent=2)
 
     device = (
         "cuda"
@@ -80,8 +104,6 @@ def train(
         else "mps" if torch.backends.mps.is_available() else "cpu"
     )
     print(f"Using device: {device}")
-
-    mat_reader = MatReader(matpath)
 
     # random_state is set for reproducibility,
     # but can be removed for more variability in splits across runs
@@ -189,22 +211,14 @@ def train(
                 print(f"Early stopping triggered at epoch {epoch + 1}")
                 break
 
-        folder_path = ("artifacts", f"{start_time:%m-%d_%H-%M}", f"fold-{fold+1}")
-        os.makedirs(os.path.join(*folder_path), exist_ok=True)
+        path_with_kfold = os.path.join(artifact_folder_path, f"fold-{fold+1}")
+        os.makedirs(path_with_kfold, exist_ok=True)
 
         if save_weights:
             torch.save(
                 model.state_dict(),
-                os.path.join(*folder_path, "model_weights.pth"),
+                os.path.join(path_with_kfold, "model_weights.pth"),
             )
-
-        with open(
-            os.path.join(*folder_path, "hyperparams.json"),
-            "w",
-            encoding="utf-8",
-        ) as f:
-            hyperparams["num_patches_per_fov"] = train_subset.num_patches_per_fov
-            json.dump(hyperparams, f, indent=2)
 
         if all_preds and all_labels:
             all_labels_np = torch.cat(all_labels).numpy()
@@ -271,7 +285,7 @@ def train(
             axes[1, 1].set_title("Classification Report")
 
             plt.tight_layout()
-            plt.savefig(os.path.join(*folder_path, "results.png"), dpi=150)
+            plt.savefig(os.path.join(path_with_kfold, "results.png"), dpi=150)
             plt.close()
 
 

@@ -50,7 +50,7 @@ uv run lampe-cli train <architecture> <matpath>
 # Example
 uv run lampe-cli train sliding_window "lampe_dataset/Full images"
 
-# Run inference
+# Run inference (not implemented yet)
 uv run lampe-cli inference
 ```
 
@@ -113,3 +113,5 @@ uv run lampe-cli inference
 - [ ] perhaps k-folds=5 not suitable for small dataset
 - [ ] Ensemble approach: binary classifier for each class (e.g. IDC vs non-IDC, benign vs non-benign) and combine predictions
 - [ ] Tune learning rate
+- [ ] Fixed Held out Test Set (only revealed at the end). MUST RESPECT GROUP SPLIT
+- [ ] Regularization
