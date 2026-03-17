@@ -87,7 +87,7 @@ class MatReader:
 
                 images_list.append(multimodal_data)
                 labels_list.extend([classes.index(classname)] * len(names))
-                ids_list.extend([name[0] for name in names])
+                ids_list.extend([f"{name[0]}_{name[1]}" for name in names])
 
         self.images = np.concatenate(images_list, axis=0)
         self.class_labels = np.array(labels_list)

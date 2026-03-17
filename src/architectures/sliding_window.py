@@ -59,8 +59,8 @@ class SlidingWindowDataset(Dataset[Datapoint]):
         ]
         patch_tensor = torch.from_numpy(patch).float()  # (n modalities, 224, 224)
         class_label = int(self.mat_reader.class_labels[fov_idx])
-        patient_idx = int(self.mat_reader.patient_ids[fov_idx])
-        return patch_tensor, class_label, patient_idx
+        patient_id = self.mat_reader.patient_ids[fov_idx]
+        return patch_tensor, class_label, patient_id
 
 
 def get_dataset(

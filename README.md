@@ -103,3 +103,4 @@ uv run lampe-cli inference
 - [ ] Geometric Augmentation
 - [ ] Accuracy, recall, precision, F1 score (due to class imbalance)
 - [ ] [ROC and AUC](https://developers.google.com/machine-learning/crash-course/classification/roc-and-auc)
+- [ ] perhaps k-folds=5 not suitable for small dataset

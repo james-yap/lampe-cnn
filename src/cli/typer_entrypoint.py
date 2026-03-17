@@ -92,7 +92,7 @@ def train(
             # train
             model.train()
             running_loss = 0.0
-            for patches, labels, _patient_ids in train_loader:
+            for patches, labels, _patient_id in train_loader:
                 patches, labels = patches.to(device), labels.to(device)
                 optimizer.zero_grad()
                 outputs = model(patches)
@@ -103,11 +103,14 @@ def train(
             epoch_train_loss = running_loss / len(train_subset)
             train_losses.append(epoch_train_loss)
 
+            # reset predictions and labels to track only last epoch's validation results
+            all_preds, all_labels = [], []
+
             # evaluate
             model.eval()
             val_loss = 0.0
             with torch.no_grad():  # no need to track gradients during validation
-                for patches, labels, _patient_ids in val_loader:
+                for patches, labels, _patient_id in val_loader:
                     patches, labels = patches.to(device), labels.to(device)
                     outputs = model(patches)
                     loss = criterion(outputs, labels)
