@@ -1,4 +1,7 @@
-import numpy as np
+"""
+Geometric Augmentation Architecture: Sliding Window with ResNet18 Backbone
+"""
+
 import torch
 from torch.utils.data import Dataset
 from torch import nn
@@ -24,11 +27,7 @@ class SlidingWindowDataset(Dataset[Datapoint]):
     ]  # all top-left (y, x) coordinates for our patches
 
     def __init__(
-        self,
-        mat_reader: MatReader,
-        eff_fov_indices: list[int],
-        window_size: int = 224,
-        stride: int = 96,
+        self, mat_reader: MatReader, eff_fov_indices: list[int], factor: int = 5
     ):
         """
         Args:
@@ -36,14 +35,18 @@ class SlidingWindowDataset(Dataset[Datapoint]):
             eff_fov_indices (list[int]): List of FOV indices to include in the dataset.
                                      The rest are ignored, allowing us to create
                                      train/val/test splits at the FOV level.
-            window_size (int): The size of the sliding window (default: 224).
-            stride (int): The stride of the sliding window (default: 96).
-                          Smaller stride = more overlap = more samples.
+            factor (int): The number of patches per dimension
+                          (e.g., factor=5 means 5x5=25 patches per FOV).
+                          Window size is fixed at 224 (optimal for ResNet),
+                          so stride is computed as (image_dim - window_size) // (factor - 1).
         """
         self.mat_reader = mat_reader
         self.eff_fov_indices = eff_fov_indices
-        self.window_size = window_size
-        self.stride = stride
+
+        self.window_size = 224
+        self.stride = (mat_reader.get_dims()[2] - self.window_size) // (
+            factor - 1
+        )  # (height - window_size) // (factor - 1)
 
         # equivalent: mat_reader.images.size(2), mat_reader.images.size(3)
         height, width = mat_reader.get_dims()[2], mat_reader.get_dims()[3]

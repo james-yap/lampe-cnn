@@ -108,7 +108,6 @@ uv run lampe-cli inference
 
 - [ ] Normalization: Per-channel mean/std normalization based on training set statistics (not from ResNet)
 - [ ] Learning rate scheduling: Experiment with schedulers (e.g. StepLR, CosineAnnealingLR) to improve convergence
-- [ ] Geometric Augmentation
 - [ ] Accuracy, recall, precision, F1 score (due to class imbalance)
 - [ ] [ROC and AUC](https://developers.google.com/machine-learning/crash-course/classification/roc-and-auc)
 - [ ] perhaps k-folds=5 not suitable for small dataset
