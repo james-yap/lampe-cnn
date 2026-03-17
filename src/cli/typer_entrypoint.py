@@ -6,15 +6,23 @@ providing options for specifying the architecture and the path to a MAT file.
 """
 
 import os
+from datetime import datetime
 from enum import Enum
 
 import torch
 from torch.utils.data import DataLoader, Subset
 import typer
 from sklearn.model_selection import StratifiedGroupKFold
+from sklearn.metrics import (
+    confusion_matrix,
+    classification_report,
+    ConfusionMatrixDisplay,
+)
+from matplotlib import pyplot as plt
 
 from architectures import sliding_window
 from shared.mat_reader import MatReader
+from shared.early_stopping import EarlyStopping
 
 app = typer.Typer()
 
@@ -27,8 +35,13 @@ class Architecture(str, Enum):
 def train(
     architecture: Architecture,
     matpath: str,
-    n_folds: int = typer.Option(5, help="Number of folds for cross-validation"),
-    batch_size: int = typer.Option(32, help="Batch size for training and validation"),
+    num_epochs: int = typer.Option(20, "-e", help="Number of training epochs"),
+    n_folds: int = typer.Option(5, "-f", help="Number of folds for cross-validation"),
+    batch_size: int = typer.Option(
+        32, "-b", help="Batch size for training and validation"
+    ),
+    lr: float = typer.Option(1e-4, "-l", help="Learning rate for the optimizer"),
+    patience: int = typer.Option(5, "-p", help="Patience for early stopping"),
 ):
     """
     Train and evaluate the model based on the specified architecture and MAT file path.
@@ -37,9 +50,6 @@ def train(
     """
 
     mat_reader = MatReader(matpath)
-
-    os.makedirs(os.path.join("artifacts", "reports"), exist_ok=True)
-    os.makedirs(os.path.join("artifacts", "models"), exist_ok=True)
 
     device = (
         "cuda"
@@ -56,7 +66,6 @@ def train(
         mat_reader.patient_ids,
     )
     dataset = sliding_window.get_dataset(mat_reader)
-    model = sliding_window.get_model(num_classes=4).to(device)
 
     # TODO: switch case for architectures here based on 'architecture' enum.
 
@@ -68,6 +77,109 @@ def train(
         val_subset = Subset(dataset, val_indices.tolist())
         train_loader = DataLoader(train_subset, batch_size=batch_size, shuffle=True)
         val_loader = DataLoader(val_subset, batch_size=batch_size, shuffle=False)
+
+        model = sliding_window.get_model(num_classes=4).to(device)
+        criterion = torch.nn.CrossEntropyLoss()
+        optimizer = torch.optim.Adam(model.parameters(), lr=lr)
+        early_stopping = EarlyStopping(patience=patience)
+
+        train_losses, val_losses = [], []
+        all_preds, all_labels = [], []
+
+        for epoch in range(num_epochs):
+            # train
+            model.train()
+            running_loss = 0.0
+            for patches, labels, _patient_ids in train_loader:
+                patches, labels = patches.to(device), labels.to(device)
+                optimizer.zero_grad()
+                outputs = model(patches)
+                loss = criterion(outputs, labels)
+                loss.backward()
+                optimizer.step()
+                running_loss += loss.item() * patches.size(0)
+            epoch_train_loss = running_loss / len(train_subset)
+            train_losses.append(epoch_train_loss)
+
+            # evaluate
+            model.eval()
+            val_loss = 0.0
+            all_preds, all_labels = [], []  # reset each epoch
+            with torch.no_grad():  # no need to track gradients during validation
+                for patches, labels, _patient_ids in val_loader:
+                    patches, labels = patches.to(device), labels.to(device)
+                    outputs = model(patches)
+                    loss = criterion(outputs, labels)
+                    val_loss += loss.item() * patches.size(0)
+                    all_preds.append(outputs.cpu())
+                    all_labels.append(labels.cpu())
+            epoch_val_loss = val_loss / len(val_subset)
+            val_losses.append(epoch_val_loss)
+
+            print(
+                f"Epoch {epoch + 1}/{num_epochs} - Train Loss: {epoch_train_loss:.4f} - Val Loss: {epoch_val_loss:.4f}"
+            )
+
+            early_stopping(epoch_val_loss)
+            if early_stopping.early_stop:
+                print(f"Early stopping triggered at epoch {epoch + 1}")
+                break
+
+        # create new folder (exist ok) in artifacts/. date and timestamp as folder name
+        # inside that folder, save model weights, all arguments used for this run, and learning curves. also confusion matrix and classification report
+        now = datetime.now()
+        folder_name = f"{now:%m-%d_%H-%M}_fold-{fold+1}"
+        os.makedirs(os.path.join("artifacts", folder_name), exist_ok=True)
+
+        torch.save(
+            model.state_dict(),
+            os.path.join("artifacts", folder_name, "model_weights.pth"),
+        )
+
+        with open(
+            os.path.join("artifacts", folder_name, "training_args.txt"),
+            "w",
+            encoding="utf-8",
+        ) as f:
+            f.write(f"Architecture: {architecture}\n")
+            f.write(f"MAT file path: {matpath}\n")
+            f.write(f"Number of epochs: {num_epochs}\n")
+            f.write(f"Number of folds: {n_folds}\n")
+            f.write(f"Batch size: {batch_size}\n")
+            f.write(f"Learning rate: {lr}\n")
+            f.write(f"Early stopping patience: {patience}\n")
+
+        plt.figure()
+        plt.plot(train_losses, label="Train Loss")
+        plt.plot(val_losses, label="Val Loss")
+        plt.xlabel("Epoch")
+        plt.ylabel("Loss")
+        plt.title(f"Training and Validation Loss - Fold {fold + 1}")
+        plt.legend()
+        plt.savefig(os.path.join("artifacts", folder_name, "loss_curve.png"))
+        plt.close()
+
+        if all_preds and all_labels:
+            cm = confusion_matrix(
+                torch.cat(all_labels).numpy(),
+                torch.cat(all_preds).argmax(dim=1).numpy(),
+            )
+            disp = ConfusionMatrixDisplay(confusion_matrix=cm)
+            disp.plot()
+            plt.savefig(os.path.join("artifacts", folder_name, "confusion_matrix.png"))
+            plt.close()
+
+            cr = classification_report(
+                torch.cat(all_labels).numpy(),
+                torch.cat(all_preds).argmax(dim=1).numpy(),
+                output_dict=False,
+            )
+            with open(
+                os.path.join("artifacts", folder_name, "classification_report.txt"),
+                "w",
+                encoding="utf-8",
+            ) as f:
+                f.write(str(cr))
 
 
 @app.command()

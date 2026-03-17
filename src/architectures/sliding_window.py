@@ -35,6 +35,7 @@ class SlidingWindowDataset(Dataset[Datapoint]):
         self.window_size = window_size
         self.stride = stride
 
+        # equivalent: mat_reader.images.size(2), mat_reader.images.size(3)
         height, width = mat_reader.get_dims()[2], mat_reader.get_dims()[3]
 
         # Pre-compute all top-left (y, x) coordinates for our patches
