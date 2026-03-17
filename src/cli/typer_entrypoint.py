@@ -49,13 +49,14 @@ def train(
     Uses StratifiedGroupKFold to ensure balanced representation of classes and groups in training/validation splits, preventing intracore bias.
     """
 
-    mat_reader = MatReader(matpath)
-
     device = (
         "cuda"
         if torch.cuda.is_available()
         else "mps" if torch.backends.mps.is_available() else "cpu"
     )
+    print(f"Using device: {device}")
+
+    mat_reader = MatReader(matpath)
 
     # random_state is set for reproducibility, but can be removed for more variability in splits across runs
     sgkf = StratifiedGroupKFold(n_splits=n_folds, shuffle=True, random_state=42)
@@ -78,7 +79,8 @@ def train(
         train_loader = DataLoader(train_subset, batch_size=batch_size, shuffle=True)
         val_loader = DataLoader(val_subset, batch_size=batch_size, shuffle=False)
 
-        model = sliding_window.get_model(num_classes=4).to(device)
+        num_classes = 4
+        model = sliding_window.get_model(num_classes=num_classes).to(device)
         criterion = torch.nn.CrossEntropyLoss()
         optimizer = torch.optim.Adam(model.parameters(), lr=lr)
         early_stopping = EarlyStopping(patience=patience)
@@ -104,7 +106,6 @@ def train(
             # evaluate
             model.eval()
             val_loss = 0.0
-            all_preds, all_labels = [], []  # reset each epoch
             with torch.no_grad():  # no need to track gradients during validation
                 for patches, labels, _patient_ids in val_loader:
                     patches, labels = patches.to(device), labels.to(device)
@@ -163,6 +164,7 @@ def train(
             cm = confusion_matrix(
                 torch.cat(all_labels).numpy(),
                 torch.cat(all_preds).argmax(dim=1).numpy(),
+                labels=list(range(num_classes)),
             )
             disp = ConfusionMatrixDisplay(confusion_matrix=cm)
             disp.plot()
@@ -173,6 +175,7 @@ def train(
                 torch.cat(all_labels).numpy(),
                 torch.cat(all_preds).argmax(dim=1).numpy(),
                 output_dict=False,
+                zero_division=0,
             )
             with open(
                 os.path.join("artifacts", folder_name, "classification_report.txt"),
