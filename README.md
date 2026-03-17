@@ -96,6 +96,14 @@ uv run lampe-cli inference
 | Native ResNet50 resolution (224 x 224) | ? | Combine with sliding window approach on full images |
 | StratifiedGroupKFold | ? | Ensure balanced representation of classes and groups in training/validation splits (intracore bias) |
 
+## Dataset Quirks
+
+- The "names" arrays are formatted as follows: `"1 B1 IDC 2": Slide number, Position on slide, Class, FOV number`
+- We can uniquely identify patients (assuming 1 core per patient) by the combination of slide number and position on slide (e.g. "1 B1" corresponds to one patient, "2 A3" corresponds to another patient, etc.)
+- Patient IDs are used to group samples in the `StratifiedGroupKFold` splitting strategy to prevent data leakage and ensure that all samples from a given patient are in the same fold.
+- There are some patient core FOVs found in multiple classes. This means that the FOV contains sub-images of different classes (e.g., LGC and HGC sub-images in the same FOV of the same core).
+- The 4 classes (Bening, LGC, HGC, IDC) are ordinal in nature, meaning they represent increasing severity of prostate cancer. This could be leveraged in the model architecture or loss function (e.g., using ordinal regression techniques instead of treating it as a standard multi-class classification problem).
+
 ### Notes
 
 - [ ] Normalization: Per-channel mean/std normalization based on training set statistics (not from ResNet)

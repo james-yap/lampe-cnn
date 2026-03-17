@@ -26,7 +26,7 @@ class MatReader:
     patient_ids: np.ndarray
 
     def __init__(self, matpath: str):
-        classes = ["Healthy", "HGC", "IDC", "LGC"]
+        classes = ["Healthy", "LGC", "HGC", "IDC"]
         modalities = ["1450_bgsub", "1668_bgsub", "SHG"]
 
         images_list: list[np.ndarray] = []

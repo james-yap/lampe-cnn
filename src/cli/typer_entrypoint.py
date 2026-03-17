@@ -8,6 +8,7 @@ providing options for specifying the architecture and the path to a MAT file.
 import os
 from datetime import datetime
 from enum import Enum
+import json
 
 import torch
 from torch.utils.data import DataLoader
@@ -95,13 +96,15 @@ def train(
         early_stopping = EarlyStopping(patience=patience)
 
         train_losses, val_losses = [], []
-        all_preds, all_labels = [], []
+        all_preds, all_labels, debug_stratification = [], [], {}
+
+        seen_in_training = set()  # used for data leakage detection
 
         for epoch in range(num_epochs):
             # train
             model.train()
             running_loss = 0.0
-            for patches, labels, _patient_id in train_loader:
+            for patches, labels, _patient_ids in train_loader:
                 patches, labels = patches.to(device), labels.to(device)
                 optimizer.zero_grad()
                 outputs = model(patches)
@@ -109,6 +112,8 @@ def train(
                 loss.backward()
                 optimizer.step()
                 running_loss += loss.item() * patches.size(0)
+                for pid in _patient_ids:
+                    seen_in_training.add(pid)
             epoch_train_loss = running_loss / len(train_subset)
             train_losses.append(epoch_train_loss)
 
@@ -119,13 +124,24 @@ def train(
             model.eval()
             val_loss = 0.0
             with torch.no_grad():  # no need to track gradients during validation
-                for patches, labels, _patient_id in val_loader:
+                for patches, labels, _patient_ids in val_loader:
                     patches, labels = patches.to(device), labels.to(device)
                     outputs = model(patches)
                     loss = criterion(outputs, labels)
                     val_loss += loss.item() * patches.size(0)
                     all_preds.append(outputs.cpu())
                     all_labels.append(labels.cpu())
+                    for label, pid in zip(labels.cpu().numpy(), _patient_ids):
+                        assert (
+                            pid not in seen_in_training
+                        ), f"Data leakage detected: Patient ID {pid} found in both training and validation sets!"
+                        if pid in debug_stratification:
+                            if debug_stratification[pid] != label:
+                                print(
+                                    f"Stratification error: Patient ID {pid} has inconsistent labels across folds (previous: {debug_stratification[pid]}, current: {label})"
+                                )
+                        else:
+                            debug_stratification[pid] = label
             epoch_val_loss = val_loss / len(val_subset)
             val_losses.append(epoch_val_loss)
 
@@ -150,17 +166,21 @@ def train(
         )
 
         with open(
-            os.path.join("artifacts", folder_name, "training_args.txt"),
+            os.path.join("artifacts", folder_name, "hyperparams.json"),
             "w",
             encoding="utf-8",
         ) as f:
-            f.write(f"Architecture: {architecture}\n")
-            f.write(f"MAT file path: {matpath}\n")
-            f.write(f"Number of epochs: {num_epochs}\n")
-            f.write(f"Number of folds: {n_folds}\n")
-            f.write(f"Batch size: {batch_size}\n")
-            f.write(f"Learning rate: {lr}\n")
-            f.write(f"Early stopping patience: {patience}\n")
+            hyperparams = {
+                "architecture": architecture,
+                "matpath": matpath,
+                "num_epochs": num_epochs,
+                "n_folds": n_folds,
+                "batch_size": batch_size,
+                "learning_rate": lr,
+                "early_stopping_patience": patience,
+                "num_patches_per_fov": train_subset.num_patches_per_fov,
+            }
+            json.dump(hyperparams, f, indent=2)
 
         plt.figure()
         plt.plot(train_losses, label="Train Loss")
