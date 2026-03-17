@@ -34,6 +34,9 @@ class ProstateDataset(Dataset):
         self.root_dir = root_dir
         self.label_map = label_map
         
+        self.mean = torch.tensor([0.4997, 0.5073, 0.5064]).view(3, 1, 1)
+        self.std = torch.tensor([0.0002, 0.0118, 0.0092]).view(3, 1, 1)
+        
     def __len__(self):
         return len(self.samples)
     
@@ -50,6 +53,9 @@ class ProstateDataset(Dataset):
         image = np.stack([shg, bg1450, bg1668], axis=0)
         
         image = image.astype(np.float32) / 65535.0
+        image = torch.tensor(image)
+        
+        image = (image - self.mean) / self.std
         
         # Augmentation
         if cls in ["LGC", "Healthy"]:
@@ -58,4 +64,4 @@ class ProstateDataset(Dataset):
             
         label = self.label_map[cls]
         
-        return torch.tensor(image), label
+        return image, label
