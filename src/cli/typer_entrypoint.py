@@ -10,7 +10,7 @@ from datetime import datetime
 from enum import Enum
 
 import torch
-from torch.utils.data import DataLoader, Subset
+from torch.utils.data import DataLoader
 import typer
 from sklearn.model_selection import StratifiedGroupKFold
 from sklearn.metrics import (
@@ -66,16 +66,25 @@ def train(
         mat_reader.class_labels,
         mat_reader.patient_ids,
     )
-    dataset = sliding_window.get_dataset(mat_reader)
-
-    # TODO: switch case for architectures here based on 'architecture' enum.
 
     for fold, (train_indices, val_indices) in enumerate(
         sgkf.split(images, class_labels, groups=patient_ids)
     ):
         print(f"\n--- Fold {fold + 1}/{n_folds} ---")
-        train_subset = Subset(dataset, train_indices.tolist())
-        val_subset = Subset(dataset, val_indices.tolist())
+
+        # TODO: switch case for architectures here based on 'architecture' enum.
+        # store hyperparams in report
+        # use 'dict' for hyperparams for dynamic architecture
+        train_subset = sliding_window.SlidingWindowDataset(
+            mat_reader,
+            eff_fov_indices=train_indices.tolist(),
+            window_size=224,
+            stride=96,
+        )
+        val_subset = sliding_window.SlidingWindowDataset(
+            mat_reader, eff_fov_indices=val_indices.tolist(), window_size=224, stride=96
+        )
+
         train_loader = DataLoader(train_subset, batch_size=batch_size, shuffle=True)
         val_loader = DataLoader(val_subset, batch_size=batch_size, shuffle=False)
 

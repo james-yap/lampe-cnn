@@ -1,6 +1,6 @@
 import numpy as np
 import torch
-from torch.utils.data import Dataset, DataLoader
+from torch.utils.data import Dataset
 from torch import nn
 from torchvision import models
 
@@ -23,15 +23,25 @@ class SlidingWindowDataset(Dataset[Datapoint]):
         tuple[int, int]
     ]  # all top-left (y, x) coordinates for our patches
 
-    def __init__(self, mat_reader: MatReader, window_size: int = 224, stride: int = 96):
+    def __init__(
+        self,
+        mat_reader: MatReader,
+        eff_fov_indices: list[int],
+        window_size: int = 224,
+        stride: int = 96,
+    ):
         """
         Args:
             mat_reader (MatReader): An instance of MatReader to load the image matrix.
+            eff_fov_indices (list[int]): List of FOV indices to include in the dataset.
+                                     The rest are ignored, allowing us to create
+                                     train/val/test splits at the FOV level.
             window_size (int): The size of the sliding window (default: 224).
             stride (int): The stride of the sliding window (default: 96).
                           Smaller stride = more overlap = more samples.
         """
         self.mat_reader = mat_reader
+        self.eff_fov_indices = eff_fov_indices
         self.window_size = window_size
         self.stride = stride
 
@@ -47,10 +57,12 @@ class SlidingWindowDataset(Dataset[Datapoint]):
         self.num_patches_per_fov = len(self.top_left_coords)
 
     def __len__(self):
-        return self.mat_reader.get_dims()[0] * self.num_patches_per_fov
+        return (
+            len(self.eff_fov_indices) * self.num_patches_per_fov
+        )  # total number of patches across all FOVs
 
     def __getitem__(self, idx: int) -> Datapoint:
-        fov_idx = idx // self.num_patches_per_fov
+        fov_idx = self.eff_fov_indices[idx // self.num_patches_per_fov]
         patch_idx = idx % self.num_patches_per_fov
         y, x = self.top_left_coords[patch_idx]
 
@@ -61,15 +73,6 @@ class SlidingWindowDataset(Dataset[Datapoint]):
         class_label = int(self.mat_reader.class_labels[fov_idx])
         patient_id = self.mat_reader.patient_ids[fov_idx]
         return patch_tensor, class_label, patient_id
-
-
-def get_dataset(
-    mat_reader: MatReader, window_size: int = 224, stride: int = 96
-) -> SlidingWindowDataset:
-    """
-    Returns a SlidingWindowDataset instance.
-    """
-    return SlidingWindowDataset(mat_reader, window_size, stride)
 
 
 def get_model(num_classes=4) -> nn.Module:
