@@ -18,7 +18,10 @@ from sklearn.metrics import (
     confusion_matrix,
     classification_report,
     ConfusionMatrixDisplay,
+    roc_curve,
+    auc,
 )
+from sklearn.preprocessing import label_binarize
 from matplotlib import pyplot as plt
 
 from architectures import sliding_window
@@ -29,6 +32,10 @@ app = typer.Typer()
 
 
 class Architecture(str, Enum):
+    """
+    Model architecture options for training.
+    """
+
     SLIDING_WINDOW = "sliding_window"
 
 
@@ -43,12 +50,17 @@ def train(
     ),
     lr: float = typer.Option(1e-4, "-l", help="Learning rate for the optimizer"),
     patience: int = typer.Option(5, "-p", help="Patience for early stopping"),
+    save_weights: bool = typer.Option(
+        False, "-s", help="Whether to save model weights after training"
+    ),
 ):
     """
     Train and evaluate the model based on the specified architecture and MAT file path.
     Automatically creates and saves artifacts (e.g., trained model weights, evaluation metrics) in the 'artifacts' directory.
     Uses StratifiedGroupKFold to ensure balanced representation of classes and groups in training/validation splits, preventing intracore bias.
     """
+
+    start_time = datetime.now()
 
     device = (
         "cuda"
@@ -154,19 +166,17 @@ def train(
                 print(f"Early stopping triggered at epoch {epoch + 1}")
                 break
 
-        # create new folder (exist ok) in artifacts/. date and timestamp as folder name
-        # inside that folder, save model weights, all arguments used for this run, and learning curves. also confusion matrix and classification report
-        now = datetime.now()
-        folder_name = f"{now:%m-%d_%H-%M}_fold-{fold+1}"
-        os.makedirs(os.path.join("artifacts", folder_name), exist_ok=True)
+        folder_path = ("artifacts", f"{start_time:%m-%d_%H-%M}", f"fold-{fold+1}")
+        os.makedirs(os.path.join(*folder_path), exist_ok=True)
 
-        torch.save(
-            model.state_dict(),
-            os.path.join("artifacts", folder_name, "model_weights.pth"),
-        )
+        if save_weights:
+            torch.save(
+                model.state_dict(),
+                os.path.join(*folder_path, "model_weights.pth"),
+            )
 
         with open(
-            os.path.join("artifacts", folder_name, "hyperparams.json"),
+            os.path.join(*folder_path, "hyperparams.json"),
             "w",
             encoding="utf-8",
         ) as f:
@@ -182,39 +192,73 @@ def train(
             }
             json.dump(hyperparams, f, indent=2)
 
-        plt.figure()
-        plt.plot(train_losses, label="Train Loss")
-        plt.plot(val_losses, label="Val Loss")
-        plt.xlabel("Epoch")
-        plt.ylabel("Loss")
-        plt.title(f"Training and Validation Loss - Fold {fold + 1}")
-        plt.legend()
-        plt.savefig(os.path.join("artifacts", folder_name, "loss_curve.png"))
-        plt.close()
-
         if all_preds and all_labels:
+            all_labels_np = torch.cat(all_labels).numpy()
+            all_preds_cat = torch.cat(all_preds)
+            all_probs = torch.softmax(all_preds_cat, dim=1).numpy()
+
             cm = confusion_matrix(
-                torch.cat(all_labels).numpy(),
-                torch.cat(all_preds).argmax(dim=1).numpy(),
+                all_labels_np,
+                all_preds_cat.argmax(dim=1).numpy(),
                 labels=list(range(num_classes)),
             )
-            disp = ConfusionMatrixDisplay(confusion_matrix=cm)
-            disp.plot()
-            plt.savefig(os.path.join("artifacts", folder_name, "confusion_matrix.png"))
-            plt.close()
 
             cr = classification_report(
-                torch.cat(all_labels).numpy(),
-                torch.cat(all_preds).argmax(dim=1).numpy(),
+                all_labels_np,
+                all_preds_cat.argmax(dim=1).numpy(),
                 output_dict=False,
                 zero_division=0,
             )
-            with open(
-                os.path.join("artifacts", folder_name, "classification_report.txt"),
-                "w",
-                encoding="utf-8",
-            ) as f:
-                f.write(str(cr))
+
+            all_labels_bin = label_binarize(
+                all_labels_np, classes=list(range(num_classes))
+            )
+
+            fig, axes = plt.subplots(2, 2, figsize=(14, 11))
+            fig.suptitle(f"Fold {fold + 1} Evaluation", fontsize=14)
+
+            # Loss curve (top-left)
+            axes[0, 0].plot(train_losses, label="Train Loss")
+            axes[0, 0].plot(val_losses, label="Val Loss")
+            axes[0, 0].set_xlabel("Epoch")
+            axes[0, 0].set_ylabel("Loss")
+            axes[0, 0].set_title("Training and Validation Loss")
+            axes[0, 0].legend()
+
+            # Confusion matrix (top-right)
+            disp = ConfusionMatrixDisplay(confusion_matrix=cm)
+            disp.plot(ax=axes[0, 1], colorbar=False)
+            axes[0, 1].set_title("Confusion Matrix")
+
+            # ROC curves (bottom-left)
+            for i in range(num_classes):
+                if all_labels_bin[:, i].sum() == 0:
+                    continue
+                fpr, tpr, _ = roc_curve(all_labels_bin[:, i], all_probs[:, i])
+                roc_auc = auc(fpr, tpr)
+                axes[1, 0].plot(fpr, tpr, label=f"Class {i} (AUC = {roc_auc:.2f})")
+            axes[1, 0].plot([0, 1], [0, 1], "k--", label="Random")
+            axes[1, 0].set_xlabel("False Positive Rate")
+            axes[1, 0].set_ylabel("True Positive Rate")
+            axes[1, 0].set_title("ROC Curves")
+            axes[1, 0].legend()
+
+            # Classification report (bottom-right)
+            axes[1, 1].axis("off")
+            axes[1, 1].text(
+                0.5,
+                0.5,  # x and y coordinates set to exactly 50% (the middle)
+                cr,
+                fontsize=12,  # Bumped up for readability
+                family="monospace",
+                ha="center",  # Centers the text block horizontally
+                va="center",  # Centers the text block vertically
+            )
+            axes[1, 1].set_title("Classification Report")
+
+            plt.tight_layout()
+            plt.savefig(os.path.join(*folder_path, "results.png"), dpi=150)
+            plt.close()
 
 
 @app.command()
