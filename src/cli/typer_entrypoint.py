@@ -30,6 +30,8 @@ from shared.early_stopping import EarlyStopping
 
 app = typer.Typer()
 
+VERBOSE_MODE = False
+
 
 class Architecture(str, Enum):
     """
@@ -185,7 +187,7 @@ def train(
                             f"Patient ID {pid} found in both training and validation sets!"
                         )
                         if pid in debug_stratification:
-                            if debug_stratification[pid] != label:
+                            if debug_stratification[pid] != label and VERBOSE_MODE:
                                 print(
                                     (
                                         "Stratification error: "
