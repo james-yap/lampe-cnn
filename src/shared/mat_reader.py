@@ -72,9 +72,10 @@ class MatReader:
                             f"Expected 3D array for '{mode_key}', got shape {mode_data.shape}"
                         )
 
-                    assert len(names) == int(
-                        mode_data.shape[2]
-                    ), f"Number of names in '{names_filename}' does not match number of samples in '{mat_filename}' for modality '{mode}'"
+                    assert len(names) == int(mode_data.shape[2]), (
+                        f"Number of names in '{names_filename}' does not match"
+                        f"number of samples in '{mat_filename}' for modality '{mode}'"
+                    )
 
                     mode_data_images.append(mode_data)  # (width, height, n samples)
 

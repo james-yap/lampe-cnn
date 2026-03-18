@@ -5,28 +5,11 @@ It allows users to interact with the application via the command line,
 providing options for specifying the architecture and the path to a MAT file.
 """
 
-import os
-from datetime import datetime
+# built-in
 from enum import Enum
-import json
 
-import torch
-from torch.utils.data import DataLoader
+# third-party
 import typer
-from sklearn.model_selection import StratifiedGroupKFold
-from sklearn.metrics import (
-    confusion_matrix,
-    classification_report,
-    ConfusionMatrixDisplay,
-    roc_curve,
-    auc,
-)
-from sklearn.preprocessing import label_binarize
-from matplotlib import pyplot as plt
-
-from architectures import sliding_window
-from shared.mat_reader import MatReader
-from shared.early_stopping import EarlyStopping
 
 app = typer.Typer()
 
@@ -63,6 +46,36 @@ def train(
     Uses StratifiedGroupKFold to ensure balanced representation of classes
     and groups in training/validation splits, preventing intracore bias.
     """
+    print(f"Starting training with architecture: {architecture.value}.")
+    print("Initializing PyTorch engine...\n")
+
+    # pylint: disable=import-outside-toplevel
+    # to allow lazy loading (speed up initial CLI response time)
+
+    # built-in
+    import os
+    from datetime import datetime
+    import json
+    import numpy as np
+
+    # third-party
+    import torch
+    from torch.utils.data import DataLoader
+    from sklearn.model_selection import StratifiedGroupKFold
+    from sklearn.metrics import (
+        confusion_matrix,
+        classification_report,
+        ConfusionMatrixDisplay,
+        roc_curve,
+        auc,
+    )
+    from sklearn.preprocessing import label_binarize
+    from matplotlib import pyplot as plt
+
+    # package
+    from architectures import sliding_window
+    from shared.mat_reader import MatReader
+    from shared.early_stopping import EarlyStopping
 
     mat_reader = MatReader(matpath)
 
@@ -242,6 +255,12 @@ def train(
 
             all_labels_bin = label_binarize(
                 all_labels_np, classes=list(range(num_classes))
+            )
+            assert isinstance(all_labels_bin, np.ndarray) and isinstance(
+                all_probs, np.ndarray
+            ), (
+                "Expected all_labels_bin and all_probs to be numpy arrays"
+                "after label binarization and softmax conversion, respectively."
             )
 
             fig, axes = plt.subplots(2, 2, figsize=(14, 11))
