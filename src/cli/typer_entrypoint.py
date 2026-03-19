@@ -23,6 +23,7 @@ class Architecture(str, Enum):
     """
 
     SLIDING_WINDOW = "sliding_window"
+    STANDARDIZED = "standardized"
 
 
 @app.command()
@@ -74,7 +75,7 @@ def train(
     from matplotlib import pyplot as plt
 
     # package
-    from architectures import sliding_window
+    from architectures import sliding_window, standardized
     from shared.mat_reader import MatReader
     from shared.early_stopping import EarlyStopping
 
@@ -136,25 +137,38 @@ def train(
     ):
         print(f"\n--- Fold {fold + 1}/{n_folds} ---")
 
-        # TODO: switch case for architectures here based on 'architecture' enum.
-        # store hyperparams in report
-        # use 'dict' for hyperparams for dynamic architecture
-        train_subset = sliding_window.SlidingWindowDataset(
-            mat_reader,
-            eff_fov_indices=train_indices.tolist(),
-            factor=hyperparams["sliding_factor"],
-        )
-        val_subset = sliding_window.SlidingWindowDataset(
-            mat_reader,
-            eff_fov_indices=val_indices.tolist(),
-            factor=hyperparams["sliding_factor"],
-        )
+        if architecture == Architecture.SLIDING_WINDOW:
+            train_subset = sliding_window.SlidingWindowDataset(
+                mat_reader,
+                eff_fov_indices=train_indices.tolist(),
+                factor=hyperparams["sliding_factor"],
+            )
+            val_subset = sliding_window.SlidingWindowDataset(
+                mat_reader,
+                eff_fov_indices=val_indices.tolist(),
+                factor=hyperparams["sliding_factor"],
+            )
+            model = sliding_window.get_model(num_classes=NUM_CLASSES).to(device)
+        elif architecture == Architecture.STANDARDIZED:
+            train_subset = standardized.StandardizedDataset(
+                mat_reader,
+                eff_fov_indices=train_indices.tolist(),
+                factor=hyperparams["sliding_factor"],
+            )
+            val_subset = standardized.StandardizedDataset(
+                mat_reader,
+                eff_fov_indices=val_indices.tolist(),
+                factor=hyperparams["sliding_factor"],
+                mean_override=train_subset.mean,  # prevent data leakage by using train stats
+                std_override=train_subset.std,
+            )
+            model = standardized.get_model(num_classes=NUM_CLASSES).to(device)
+        else:
+            raise NotImplementedError(f"Architecture {architecture} not implemented.")
 
         train_loader = DataLoader(train_subset, batch_size=batch_size, shuffle=True)
         val_loader = DataLoader(val_subset, batch_size=batch_size, shuffle=False)
 
-        num_classes = 4
-        model = sliding_window.get_model(num_classes=num_classes).to(device)
         criterion = torch.nn.CrossEntropyLoss()
         optimizer = torch.optim.Adam(model.parameters(), lr=lr)
         early_stopping = EarlyStopping(patience=patience)

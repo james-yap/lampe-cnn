@@ -25,9 +25,16 @@ class StandardizedDataset(Dataset[Datapoint]):
     top_left_coords: list[
         tuple[int, int]
     ]  # all top-left (y, x) coordinates for our patches
+    mean: torch.Tensor
+    std: torch.Tensor
 
     def __init__(
-        self, mat_reader: MatReader, eff_fov_indices: list[int], factor: int = 5
+        self,
+        mat_reader: MatReader,
+        eff_fov_indices: list[int],
+        factor: int = 5,
+        mean_override: torch.Tensor | None = None,
+        std_override: torch.Tensor | None = None,
     ):
         """
         Args:
@@ -39,6 +46,9 @@ class StandardizedDataset(Dataset[Datapoint]):
                           (e.g., factor=5 means 5x5=25 patches per FOV).
                           Window size is fixed at 224 (optimal for ResNet),
                           so stride is computed as (image_dim - window_size) // (factor - 1).
+            mean_override (torch.Tensor | None): Optional pre-computed mean for normalization.
+                                                 Use on val/test sets to prevent data leakage.
+            std_override (torch.Tensor | None): Optional pre-computed std for normalization.
         """
         self.mat_reader = mat_reader
         self.eff_fov_indices = eff_fov_indices
@@ -57,6 +67,34 @@ class StandardizedDataset(Dataset[Datapoint]):
 
         self.num_patches_per_fov = len(self.top_left_coords)
 
+        # Computing mean and std for normalization (standardization)
+        if mean_override is not None and std_override is not None:
+            self.mean = mean_override
+            self.std = std_override
+        else:
+            num_channels = mat_reader.get_num_channels()
+            channel_sums = torch.zeros(num_channels)  # sum for each modality
+            channel_squared_sums = torch.zeros(
+                num_channels
+            )  # sum of squares for each modality
+            num_pixels = 0
+            for fov_idx in eff_fov_indices:
+                image = torch.from_numpy(
+                    mat_reader.images[fov_idx]
+                ).float()  # (n modalities, H, W)
+                channel_sums += image.sum(
+                    dim=[1, 2]
+                )  # sum over H and W for each modality
+                channel_squared_sums += (image**2).sum(dim=[1, 2])  # sum of squares
+                num_pixels += image.size(1) * image.size(2)  # total pixels per modality
+            self.mean = channel_sums / num_pixels  # (n modalities,)
+            variance = torch.clamp(
+                channel_squared_sums / num_pixels - self.mean**2, min=0.0
+            )
+            self.std = torch.sqrt(variance)  # (n modalities,)
+            # Replace near-zero std (constant channels) with 1 to prevent division by zero
+            self.std[self.std < 1e-8] = 1.0
+
     def __len__(self):
         return (
             len(self.eff_fov_indices) * self.num_patches_per_fov
@@ -73,6 +111,12 @@ class StandardizedDataset(Dataset[Datapoint]):
         patch_tensor = torch.from_numpy(patch).float()  # (n modalities, 224, 224)
         class_label = int(self.mat_reader.class_labels[fov_idx])
         patient_id = self.mat_reader.patient_ids[fov_idx]
+
+        # Standardize the patch using the pre-computed mean and std
+        patch_tensor = (patch_tensor - self.mean[:, None, None]) / self.std[
+            :, None, None
+        ]
+
         return patch_tensor, class_label, patient_id
 
 
