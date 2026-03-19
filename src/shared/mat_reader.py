@@ -15,7 +15,7 @@ class MatReader:
     Automatically groups data by patient to prevent intracore bias.
     """
 
-    # shape: np.ndarray(n samples, n modalities, width, height)
+    # shape: np.ndarray(n samples, n modalities, height, width)
     images: np.ndarray
 
     # shape: np.ndarray(n samples,)
@@ -96,6 +96,24 @@ class MatReader:
 
     def get_dims(self) -> tuple[int, int, int, int]:
         """
-        Returns the dimensions of the image data as (n samples, n modalities, width, height).
+        Returns the dimensions of the image data as (n samples, n modalities, height, width).
         """
         return self.images.shape
+
+    def get_num_fovs(self) -> int:
+        """
+        Returns the number of FOVs (samples) in the dataset.
+        """
+        return self.images.shape[0]
+
+    def get_num_channels(self) -> int:
+        """
+        Returns the number of modalities (channels) in the dataset.
+        """
+        return self.images.shape[1]
+
+    def get_height_width(self) -> tuple[int, int]:
+        """
+        Returns the height and width of the images in the dataset.
+        """
+        return self.images.shape[2], self.images.shape[3]

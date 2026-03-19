@@ -9,7 +9,7 @@ from torchvision import models
 
 from shared.mat_reader import MatReader
 
-Datapoint = tuple[torch.Tensor, int, int]  # (subimage data, class label, patient id)
+Datapoint = tuple[torch.Tensor, int, str]  # (subimage data, class label, patient id)
 
 
 class SlidingWindowDataset(Dataset[Datapoint]):
@@ -44,12 +44,10 @@ class SlidingWindowDataset(Dataset[Datapoint]):
         self.eff_fov_indices = eff_fov_indices
 
         self.window_size = 224
-        self.stride = (mat_reader.get_dims()[2] - self.window_size) // (
+        height, width = mat_reader.get_height_width()
+        self.stride = (height - self.window_size) // (
             factor - 1
         )  # (height - window_size) // (factor - 1)
-
-        # equivalent: mat_reader.images.size(2), mat_reader.images.size(3)
-        height, width = mat_reader.get_dims()[2], mat_reader.get_dims()[3]
 
         # Pre-compute all top-left (y, x) coordinates for our patches
         self.top_left_coords: list[tuple[int, int]] = []

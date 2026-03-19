@@ -14,6 +14,7 @@ import typer
 app = typer.Typer()
 
 VERBOSE_MODE = False
+NUM_CLASSES = 4
 
 
 class Architecture(str, Enum):
@@ -243,7 +244,7 @@ def train(
             cm = confusion_matrix(
                 all_labels_np,
                 all_preds_cat.argmax(dim=1).numpy(),
-                labels=list(range(num_classes)),
+                labels=list(range(NUM_CLASSES)),
             )
 
             cr = classification_report(
@@ -254,7 +255,7 @@ def train(
             )
 
             all_labels_bin = label_binarize(
-                all_labels_np, classes=list(range(num_classes))
+                all_labels_np, classes=list(range(NUM_CLASSES))
             )
             assert isinstance(all_labels_bin, np.ndarray) and isinstance(
                 all_probs, np.ndarray
@@ -280,7 +281,7 @@ def train(
             axes[0, 1].set_title("Confusion Matrix")
 
             # ROC curves (bottom-left)
-            for i in range(num_classes):
+            for i in range(NUM_CLASSES):
                 if all_labels_bin[:, i].sum() == 0:
                     continue
                 fpr, tpr, _ = roc_curve(all_labels_bin[:, i], all_probs[:, i])
