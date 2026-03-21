@@ -26,6 +26,7 @@ class Architecture(str, Enum):
     STANDARDIZED = "standardized"
     CLASS_BALANCED = "class_balanced"
     ORDINAL = "ordinal"
+    REGULARIZED = "regularized"
 
 
 @app.command()
@@ -41,6 +42,14 @@ def train(
     patience: int = typer.Option(5, "-p", help="Patience for early stopping"),
     save_weights: bool = typer.Option(
         False, "-s", help="Whether to save model weights after training"
+    ),
+    weight_decay: float = typer.Option(
+        1e-4, "-w", help="L2 weight decay for Adam optimizer (REGULARIZED only)"
+    ),
+    head_only_epochs: int = typer.Option(
+        3,
+        "-H",
+        help="Epochs to train head-only before unfreezing layer4 (REGULARIZED only)",
     ),
 ):
     """
@@ -58,6 +67,7 @@ def train(
 
     # built-in
     import os
+    from collections.abc import Callable
     from datetime import datetime
     import json
     import numpy as np
@@ -77,7 +87,13 @@ def train(
     from matplotlib import pyplot as plt
 
     # package
-    from architectures import sliding_window, standardized, class_balanced, ordinal
+    from architectures import (
+        sliding_window,
+        standardized,
+        class_balanced,
+        ordinal,
+        regularized,
+    )
     from torch.utils.data import WeightedRandomSampler
     from shared.mat_reader import MatReader
     from shared.early_stopping import EarlyStopping
@@ -93,6 +109,11 @@ def train(
         "learning_rate": lr,
         "early_stopping_patience": patience,
         "sliding_factor": 5,
+        "weight_decay": weight_decay,
+        "head_only_epochs": head_only_epochs,
+        "lr_scheduler": (
+            "ReduceLROnPlateau" if architecture == Architecture.REGULARIZED else "none"
+        ),
     }
 
     start_time = datetime.now()
@@ -218,6 +239,33 @@ def train(
             train_loader = DataLoader(
                 train_subset, batch_size=batch_size, sampler=sampler
             )
+        elif architecture == Architecture.REGULARIZED:
+            reg_train = regularized.OrdinalDataset(
+                mat_reader,
+                eff_fov_indices=train_indices.tolist(),
+                factor=hyperparams["sliding_factor"],
+                train=True,
+            )
+            val_subset = regularized.OrdinalDataset(
+                mat_reader,
+                eff_fov_indices=val_indices.tolist(),
+                factor=hyperparams["sliding_factor"],
+                train=False,
+                mean_override=reg_train.mean,  # prevent data leakage by using train stats
+                std_override=reg_train.std,
+            )
+            train_subset = reg_train
+            model = regularized.get_model(
+                num_classes=NUM_CLASSES, freeze_all=(head_only_epochs > 0)
+            ).to(device)
+            sampler = WeightedRandomSampler(
+                weights=reg_train.sample_weights.tolist(),
+                num_samples=len(reg_train),
+                replacement=True,
+            )
+            train_loader = DataLoader(
+                train_subset, batch_size=batch_size, sampler=sampler
+            )
         else:
             raise NotImplementedError(f"Architecture {architecture} not implemented.")
 
@@ -225,10 +273,22 @@ def train(
 
         criterion: torch.nn.Module = (
             torch.nn.BCEWithLogitsLoss()
-            if architecture == Architecture.ORDINAL
+            if architecture in (Architecture.ORDINAL, Architecture.REGULARIZED)
             else torch.nn.CrossEntropyLoss()
         )
-        optimizer = torch.optim.Adam(model.parameters(), lr=lr)
+        optimizer: torch.optim.Optimizer = torch.optim.Adam(model.parameters(), lr=lr)
+        # Store only the step callable to avoid pyright's self-referential type in ReduceLROnPlateau
+        scheduler_step: "Callable[[float], None] | None" = None
+        if architecture == Architecture.REGULARIZED:
+            optimizer = torch.optim.Adam(
+                [p for p in model.parameters() if p.requires_grad],
+                lr=lr,
+                weight_decay=weight_decay,
+            )
+            _plateau_scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(
+                optimizer, mode="min", factor=0.5, patience=3, min_lr=1e-6
+            )
+            scheduler_step = _plateau_scheduler.step
         early_stopping = EarlyStopping(patience=patience)
 
         train_losses, val_losses = [], []
@@ -237,11 +297,31 @@ def train(
         seen_in_training = set()  # used for data leakage detection
 
         for epoch in range(num_epochs):
+            # Phase 2: unfreeze layer4 after head_only_epochs
+            if (
+                architecture == Architecture.REGULARIZED
+                and head_only_epochs > 0
+                and epoch == head_only_epochs
+            ):
+                print(f"  [Phase 2] Unfreezing layer4 at epoch {epoch + 1}")
+                layer4_params = [
+                    p for name, p in model.named_parameters() if "layer4" in name
+                ]
+                for p in layer4_params:
+                    p.requires_grad = True
+                optimizer.add_param_group(
+                    {
+                        "params": layer4_params,
+                        "lr": lr * 0.1,
+                        "weight_decay": weight_decay,
+                    }
+                )
+
             # train
             model.train()
             running_loss = 0.0
             for batch in train_loader:
-                if architecture == Architecture.ORDINAL:
+                if architecture in (Architecture.ORDINAL, Architecture.REGULARIZED):
                     patches, ordinal_targets, _int_class_labels, _patient_ids = batch
                     patches = patches.to(device)
                     targets = ordinal_targets.to(device)  # (batch, K-1) float
@@ -268,7 +348,7 @@ def train(
             val_loss = 0.0
             with torch.no_grad():  # no need to track gradients during validation
                 for batch in val_loader:
-                    if architecture == Architecture.ORDINAL:
+                    if architecture in (Architecture.ORDINAL, Architecture.REGULARIZED):
                         patches, ordinal_targets, int_class_labels, _patient_ids = batch
                         patches = patches.to(device)
                         targets = ordinal_targets.to(device)  # (batch, K-1) float
@@ -309,6 +389,8 @@ def train(
             )
 
             early_stopping(epoch_val_loss)
+            if scheduler_step is not None:
+                scheduler_step(epoch_val_loss)
             if early_stopping.early_stop:
                 print(f"Early stopping triggered at epoch {epoch + 1}")
                 break
@@ -326,7 +408,7 @@ def train(
             all_labels_np = torch.cat(all_labels).numpy()
             all_preds_cat = torch.cat(all_preds)
 
-            if architecture == Architecture.ORDINAL:
+            if architecture in (Architecture.ORDINAL, Architecture.REGULARIZED):
                 # Decode K-1 ordinal logits to integer class predictions
                 pred_classes_np = ordinal.decode_ordinal(all_preds_cat).numpy()
                 # Reconstruct per-class probability estimates from cumulative sigmoid:
