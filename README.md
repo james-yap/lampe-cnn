@@ -56,7 +56,7 @@ uv run lampe-cli inference
 
 | Command | Argument | Description |
 |:---|:---|:---|
-| `train` | `architecture` | Architecture name (e.g. `sliding_window`) |
+| `train` | `architecture` | Architecture name (`sliding_window`, `standardized`, `class_balanced`) |
 | `train` | `matpath` | Path to the directory containing `.mat` dataset files |
 | `inference` | — | Run inference (in progress) |
 
@@ -95,6 +95,7 @@ uv run lampe-cli inference
 | Vanilla (use "3x3 bad SHG removed") | ? | Establish baseline |
 | Native ResNet50 resolution (224 x 224) | ? | Combine with sliding window approach on full images |
 | StratifiedGroupKFold | ? | Ensure balanced representation of classes and groups in training/validation splits (intracore bias) |
+| `class_balanced` | ? | Geometric augmentation (hflip, vflip, rot90) + WeightedRandomSampler oversampling on top of `standardized` |
 
 ## Dataset Quirks
 

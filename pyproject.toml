@@ -19,3 +19,8 @@ lampe-cli = "cli.typer_entrypoint:app"
 
 [tool.ruff.lint]
 ignore = ["PLC0415"]  # allow imports outside top-level (intentional lazy loading for CLI)
+
+[dependency-groups]
+dev = [
+    "pyright>=1.1.408",
+]

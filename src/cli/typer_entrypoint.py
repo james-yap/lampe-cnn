@@ -24,6 +24,7 @@ class Architecture(str, Enum):
 
     SLIDING_WINDOW = "sliding_window"
     STANDARDIZED = "standardized"
+    CLASS_BALANCED = "class_balanced"
 
 
 @app.command()
@@ -75,7 +76,8 @@ def train(
     from matplotlib import pyplot as plt
 
     # package
-    from architectures import sliding_window, standardized
+    from architectures import sliding_window, standardized, class_balanced
+    from torch.utils.data import WeightedRandomSampler
     from shared.mat_reader import MatReader
     from shared.early_stopping import EarlyStopping
 
@@ -149,6 +151,7 @@ def train(
                 factor=hyperparams["sliding_factor"],
             )
             model = sliding_window.get_model(num_classes=NUM_CLASSES).to(device)
+            train_loader = DataLoader(train_subset, batch_size=batch_size, shuffle=True)
         elif architecture == Architecture.STANDARDIZED:
             train_subset = standardized.StandardizedDataset(
                 mat_reader,
@@ -163,10 +166,33 @@ def train(
                 std_override=train_subset.std,
             )
             model = standardized.get_model(num_classes=NUM_CLASSES).to(device)
+            train_loader = DataLoader(train_subset, batch_size=batch_size, shuffle=True)
+        elif architecture == Architecture.CLASS_BALANCED:
+            cb_train = class_balanced.ClassBalancedDataset(
+                mat_reader,
+                eff_fov_indices=train_indices.tolist(),
+                factor=hyperparams["sliding_factor"],
+                train=True,
+            )
+            val_subset = class_balanced.ClassBalancedDataset(
+                mat_reader,
+                eff_fov_indices=val_indices.tolist(),
+                factor=hyperparams["sliding_factor"],
+                train=False,
+                mean_override=cb_train.mean,  # prevent data leakage by using train stats
+                std_override=cb_train.std,
+            )
+            train_subset = cb_train
+            model = class_balanced.get_model(num_classes=NUM_CLASSES).to(device)
+            sampler = WeightedRandomSampler(
+                weights=cb_train.sample_weights.tolist(),
+                num_samples=len(cb_train),
+                replacement=True,
+            )
+            train_loader = DataLoader(train_subset, batch_size=batch_size, sampler=sampler)
         else:
             raise NotImplementedError(f"Architecture {architecture} not implemented.")
 
-        train_loader = DataLoader(train_subset, batch_size=batch_size, shuffle=True)
         val_loader = DataLoader(val_subset, batch_size=batch_size, shuffle=False)
 
         criterion = torch.nn.CrossEntropyLoss()
@@ -265,7 +291,7 @@ def train(
                 all_labels_np,
                 all_preds_cat.argmax(dim=1).numpy(),
                 output_dict=False,
-                zero_division=0,
+                zero_division=0,  # type: ignore[call-overload]
             )
 
             all_labels_bin = label_binarize(
