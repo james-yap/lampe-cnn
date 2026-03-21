@@ -19,7 +19,7 @@ class MatReader:
     images: np.ndarray
 
     # shape: np.ndarray(n samples,)
-    # 0: Healthy, 1: HGC, 2: IDC, 3: LGC
+    # 0: Healthy, 1: LGC, 2: HGC, 3: IDC
     class_labels: np.ndarray
 
     # shape: np.ndarray(n samples,)
