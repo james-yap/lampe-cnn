@@ -92,13 +92,18 @@ The source code is installed as an editable package (`uv pip install -e .`), roo
 src/
 ├── __init__.py
 ├── architectures/
-│   ├── sliding_window.py    # Full-image sliding window CNN
-│   └── standardized.py     # Sliding window CNN + per-channel normalization
+│   ├── sliding_window.py      # Full-image sliding window CNN
+│   ├── standardized.py        # Sliding window CNN + per-channel normalization
+│   ├── class_balanced.py      # + class imbalance handling, geometric augmentation
+│   ├── ordinal.py             # + K-1 ordinal label encoding
+│   └── regularized.py        # + weight decay, phased unfreezing, ReduceLROnPlateau
 ├── cli/
-│   └── typer_entrypoint.py  # lampe-cli entry point
+│   └── typer_entrypoint.py    # lampe-cli entry point
 └── shared/
-    ├── early_stopping.py    # Patience-based early stopping
-    └── mat_reader.py        # MATLAB .mat file loader
+    ├── early_stopping.py      # Patience-based early stopping
+    ├── mat_reader.py          # MATLAB .mat file loader
+    ├── report.py              # FoldReporter — fold evaluation visualisation (planned)
+    └── optimizer_engine.py    # OptimizerEngine — architecture-aware optimizer config (planned)
 ```
 
 All three sub-packages carry `py.typed` marker files (PEP 561), and type annotations are enforced via Pyright (`pyrightconfig.json`).
@@ -130,6 +135,54 @@ Helper methods: `get_dims()`, `get_num_fovs()`, `get_num_channels()`, `get_heigh
 ### `EarlyStopping` (`shared/early_stopping.py`)
 
 Simple stateful early stopping. Tracks `best_loss`. A new loss must improve by at least `delta=0.001` to reset the counter. After `patience` epochs without sufficient improvement, sets `early_stop = True`.
+
+### `FoldReporter` (`shared/report.py`) *(planned — see `plan_refactor_utils.md`)*
+
+Stateless helper that owns all per-fold evaluation, reporting, and visualisation logic. Accepts raw model output tensors and produces the standard `results.png` artifact. Hides all `matplotlib` and `sklearn.metrics` imports inside its `save()` method to preserve the lazy-import / fast CLI startup property.
+
+Key interface:
+```python
+class FoldReporter:
+    def __init__(self, num_classes: int, class_names: list[str]) -> None
+    def save(
+        self,
+        fold: int,
+        output_dir: str,
+        train_losses: list[float],
+        val_losses: list[float],
+        all_preds: torch.Tensor,   # (N, num_classes) or (N, K-1)
+        all_labels: torch.Tensor,  # (N,) integer class labels
+        is_ordinal: bool = False,
+    ) -> None
+```
+
+The `is_ordinal` flag selects between two decode paths: cumulative sigmoid + ordinal decode vs. argmax + softmax. All plot rendering (2×2 grid: loss curve, confusion matrix, ROC curves, classification report text) and file I/O are encapsulated inside `save()`.
+
+### `OptimizerEngine` (`shared/optimizer_engine.py`) *(planned — see `plan_refactor_utils.md`)*
+
+Stateful object that encapsulates all optimizer, loss criterion, learning rate scheduler, and phased-unfreezing logic for one fold's training run. Constructed via a `for_architecture()` classmethod that translates an `Architecture` enum value into a set of boolean capability flags, keeping the architecture-specific conditional logic in one place.
+
+Key interface:
+```python
+class OptimizerEngine:
+    criterion: torch.nn.Module        # BCEWithLogitsLoss or CrossEntropyLoss
+    optimizer: torch.optim.Optimizer  # Adam, configured per architecture
+
+    @classmethod
+    def for_architecture(cls, architecture, model, lr, weight_decay, head_only_epochs) -> "OptimizerEngine"
+    def step_scheduler(self, val_loss: float) -> None    # no-op if no scheduler
+    def maybe_transition_phase(self, epoch: int) -> bool # True on phase-2 transition epoch
+```
+
+Current architecture → flag mapping:
+
+| Architecture | ordinal loss | weight decay | scheduler | phased unfreezing |
+|---|---|---|---|---|
+| `SLIDING_WINDOW` | ✗ | ✗ | ✗ | ✗ |
+| `STANDARDIZED` | ✗ | ✗ | ✗ | ✗ |
+| `CLASS_BALANCED` | ✗ | ✗ | ✗ | ✗ |
+| `ORDINAL` | ✓ | ✗ | ✗ | ✗ |
+| `REGULARIZED` | ✓ | ✓ | ✓ | ✓ |
 
 ---
 
@@ -211,6 +264,18 @@ Built directly on top of `class_balanced.py`, inheriting all improvements (slidi
 
 **ROC curve compatibility**: Per-class probabilities are reconstructed from cumulative sigmoid differences: `P(class=k) ≈ σ(logit_{k-1}) - σ(logit_k)`, giving a valid 4-class probability mass function for the same ROC plotting interface as the other architectures.
 
+### 6.5 `regularized.py` — Regularized Ordinal Architecture
+
+Built on top of `ordinal.py` by re-exporting `OrdinalDataset`, `OrdinalDatapoint`, `CLASS_NAMES`, `encode_ordinal`, and `decode_ordinal` unchanged, and providing an extended `get_model()` factory that supports phased unfreezing:
+
+```python
+def get_model(num_classes=4, unfreeze_layer3=False, freeze_all=False) -> nn.Module
+```
+
+When `freeze_all=True`, layer4 stays frozen from epoch 0; the CLI (or `OptimizerEngine`) unfreezes it at the phase boundary via `optimizer.add_param_group()`.
+
+This architecture is paired with `OptimizerEngine` flags: weight decay, `ReduceLROnPlateau` scheduler, and phased unfreezing all active.
+
 ---
 
 ## 7. CLI (`cli/typer_entrypoint.py`)
@@ -231,8 +296,10 @@ Full training pipeline with cross-validation.
 | `--lr` | `-l` | 1e-4 | Adam learning rate |
 | `--patience` | `-p` | 5 | Early stopping patience |
 | `--save-weights` | `-s` | False | Save model state dict |
+| `--weight-decay` | `-w` | 1e-4 | L2 weight decay (REGULARIZED only) |
+| `--head-only-epochs` | `-H` | 3 | Head-only training epochs before layer4 unfreezes (REGULARIZED only) |
 
-**Architecture enum**: `sliding_window`, `standardized`, `class_balanced`, or `ordinal`.
+**Architecture enum**: `sliding_window`, `standardized`, `class_balanced`, `ordinal`, or `regularized`.
 
 #### `healthcheck`
 
@@ -245,13 +312,16 @@ Prints a status message. No-ops for verifying CLI installation.
 3. **Device detection**: CUDA → MPS (Apple Silicon) → CPU.
 4. `StratifiedGroupKFold(n_splits=n_folds, shuffle=True, random_state=42)` splits indices, stratified by `class_labels`, grouped by `patient_ids`.
 5. Per fold:
-   - Dataset and model instantiated fresh.
-   - Optimizer: `Adam(lr=lr)`, loss: `CrossEntropyLoss`.
-   - Per epoch: standard forward/backward/step training, then validation with `torch.no_grad()`.
-   - **Runtime data leakage assertion**: during validation, each patient ID is checked against `seen_in_training`. An assertion failure immediately halts training with a clear error message.
-   - **Stratification debug**: tracks `{patient_id → label}` mappings and warns (in verbose mode) on inconsistencies.
-   - Early stopping checked after each epoch.
-6. Per fold artifacts saved to `artifacts/.../fold-{n}/`:
+   - Dataset and model instantiated fresh per architecture branch.
+   - `OptimizerEngine.for_architecture(...)` constructs the criterion, optimizer, and optional scheduler in one call *(pending refactor — currently inline)*.
+   - `WeightedRandomSampler` applied to training DataLoader for `CLASS_BALANCED`, `ORDINAL`, and `REGULARIZED`.
+   - Per epoch:
+     - `engine.maybe_transition_phase(epoch)` fires phase-2 layer4 unfreezing at `head_only_epochs` *(pending refactor)*.
+     - Standard forward/backward/step training, then validation with `torch.no_grad()`.
+     - **Runtime data leakage assertion**: during validation, each patient ID is checked against `seen_in_training`.
+     - **Stratification debug**: tracks `{patient_id → label}` mappings and warns (in verbose mode) on inconsistencies.
+     - Early stopping and `engine.step_scheduler(val_loss)` called after each epoch.
+6. Per fold artifacts saved to `artifacts/.../fold-{n}/` via `FoldReporter.save(...)` *(pending refactor — currently inline)*:
    - `results.png`: 2×2 grid — loss curves, confusion matrix, per-class ROC/AUC, classification report text.
    - `model_weights.pth` (only if `--save-weights`).
 
@@ -356,15 +426,22 @@ The 25 patches per FOV imply the full images are large enough that with factor=5
 | Item | Status |
 |---|---|
 | `inference` CLI command | Mentioned in README, no code exists |
-| Learning rate scheduling (StepLR, CosineAnnealingLR) | Not implemented |
 | Fixed held-out test set | Not implemented |
 | Ensemble binary classifiers | Not implemented |
-| Ordinal regression loss | Not implemented |
-| Regularization (weight decay, etc.) | Not implemented |
+| GradCAM / attention visualization | Not implemented |
+| MIL (Multiple Instance Learning) | Planned — see `docs/plan_mil.md` |
 
-### In Progress / Implemented
+### Implemented
 
-- `class_balanced.py`: Addresses class imbalance via geometric augmentation and `WeightedRandomSampler`. See `plan.md` for full specification.
+- `class_balanced.py`: Addresses class imbalance via geometric augmentation and `WeightedRandomSampler`.
+- `ordinal.py`: K-1 ordinal label encoding, `BCEWithLogitsLoss`, ordinal decode.
+- `regularized.py`: Phased layer unfreezing, weight decay, `ReduceLROnPlateau`.
+- `--weight-decay` (`-w`) and `--head-only-epochs` (`-H`) CLI options.
+
+### Planned Refactors
+
+- `shared/report.py` (`FoldReporter`): extract fold evaluation / visualisation from CLI. See `docs/plan_refactor_utils.md`.
+- `shared/optimizer_engine.py` (`OptimizerEngine`): extract optimizer, criterion, scheduler, and phased-unfreezing from CLI. See `docs/plan_refactor_utils.md`.
 
 ### Incomplete Modules
 
@@ -404,23 +481,31 @@ lampe-cli train <arch> <matpath>
         │       └── ensures no patient spans train+val boundary
         │
         └── for each fold:
-                ├── {Sliding|Standardized|ClassBalanced|Ordinal}Dataset(mat_reader, eff_fov_indices)
+                ├── {Sliding|Standardized|ClassBalanced|Ordinal|Regularized}Dataset(mat_reader, eff_fov_indices)
                 │       └── 25 overlapping 224×224 patches per FOV
-                │           [Standardized/ClassBalanced/Ordinal: z-score normalize w/ train stats]
-                │           [ClassBalanced/Ordinal: prints class distribution, computes sample_weights]
-                │           [ClassBalanced/Ordinal: hflip/vflip/rot90 augmentation (train split)]
-                │           [Ordinal only: encode_ordinal -> (patch, ordinal_vec, class_int, pid)]
+                │           [Standardized+: z-score normalize w/ train stats]
+                │           [ClassBalanced+: prints class distribution, computes sample_weights]
+                │           [ClassBalanced+: hflip/vflip/rot90 augmentation (train split)]
+                │           [Ordinal+: encode_ordinal -> (patch, ordinal_vec, class_int, pid)]
                 │
-                ├── ResNet18(pretrained) → freeze all → unfreeze layer4
-                │       └── head: Dropout(0.5) → Linear(512, 4)  [sliding/standardized/class_balanced]
-                │           Dropout(0.5) → Linear(512, 3)  [ordinal: K-1 threshold logits]
+                ├── get_model()  →  ResNet18(pretrained) → freeze all
+                │       [Sliding/Standardized/ClassBalanced/Ordinal: unfreeze layer4 from epoch 0]
+                │       [Regularized: freeze_all=True; layer4 unfrozen at epoch head_only_epochs]
+                │       head: Dropout(0.5) → Linear(512, 4)  [non-ordinal]
+                │             Dropout(0.5) → Linear(512, 3)  [ordinal/regularized: K-1 logits]
                 │
-                ├── CrossEntropyLoss [sliding/standardized/class_balanced]
-                │   BCEWithLogitsLoss  [ordinal]
-                ├── Adam(lr=1e-4) + EarlyStopping(patience=5)
-                │   [ClassBalanced only: WeightedRandomSampler on train_loader]
+                ├── OptimizerEngine.for_architecture(...)  ← planned shared utility
+                │       └── criterion: CrossEntropyLoss [sliding/standardized/class_balanced]
+                │                      BCEWithLogitsLoss [ordinal/regularized]
+                │           optimizer: Adam(lr, [weight_decay=w for regularized])
+                │           scheduler: ReduceLROnPlateau [regularized only]
+                │           phase transition: layer4 add_param_group at epoch H [regularized only]
                 │
-                └── artifacts/fold-{n}/
-                        ├── results.png  (loss curves, CM, ROC, report)
-                        └── model_weights.pth  (if --save-weights)
+                ├── EarlyStopping(patience)
+                │   WeightedRandomSampler on train_loader [class_balanced/ordinal/regularized]
+                │
+                └── FoldReporter.save(...)  ← planned shared utility
+                        └── artifacts/fold-{n}/
+                                ├── results.png  (loss curves, CM, ROC curves, classification report)
+                                └── model_weights.pth  (if --save-weights)
 ```
