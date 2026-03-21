@@ -188,6 +188,29 @@ A third architecture built directly on top of `StandardizedDataset`, adding two 
 
 **Model** (`get_model()`): Same ResNet18 as `standardized`, with an optional `unfreeze_layer3` flag for follow-up experiments. First run uses `layer4`-only fine-tuning to isolate the effect of the class balancing changes.
 
+### 6.4 `OrdinalDataset` (`architectures/ordinal.py`)
+
+Built directly on top of `class_balanced.py`, inheriting all improvements (sliding window, z-score normalization, augmentation, `WeightedRandomSampler`). The single structural change is replacing standard 4-class label encoding with **K-1 ordinal binary encoding**.
+
+**Encoding (`encode_ordinal`)**: Each integer class label is converted to a 3-element binary float vector where position `k` answers "Is severity strictly greater than grade k?". The result is always a valid prefix of 1s followed by 0s:
+
+| Class | Label vector |
+|---|---|
+| Healthy (0) | `[0, 0, 0]` |
+| LGC (1) | `[1, 0, 0]` |
+| HGC (2) | `[1, 1, 0]` |
+| IDC (3) | `[1, 1, 1]` |
+
+**Decoding (`decode_ordinal`)**: `sigmoid(logits) > 0.5` gives binary threshold decisions; their sum gives the integer class prediction, always in `{0, 1, 2, 3}`.
+
+**Return type**: `__getitem__` returns a 4-tuple `(patch, ordinal_label_vector, class_label_int, patient_id)`. The training loop consumes `ordinal_label_vector` for loss; evaluation metrics use `class_label_int`.
+
+**Loss**: `BCEWithLogitsLoss` — K-1 independent binary cross-entropies averaged together. Loss magnitude is naturally proportional to ordinal error distance: a Healthy/IDC confusion fires all 3 tasks wrong; an adjacent-grade confusion fires only 1.
+
+**Model head**: Outputs K-1 = 3 logits (not 4). The `get_model()` factory uses `num_ordinal_outputs = num_classes - 1` for the `nn.Linear` output dimension.
+
+**ROC curve compatibility**: Per-class probabilities are reconstructed from cumulative sigmoid differences: `P(class=k) ≈ σ(logit_{k-1}) - σ(logit_k)`, giving a valid 4-class probability mass function for the same ROC plotting interface as the other architectures.
+
 ---
 
 ## 7. CLI (`cli/typer_entrypoint.py`)
@@ -209,7 +232,7 @@ Full training pipeline with cross-validation.
 | `--patience` | `-p` | 5 | Early stopping patience |
 | `--save-weights` | `-s` | False | Save model state dict |
 
-**Architecture enum**: `sliding_window`, `standardized`, or `class_balanced` (planned).
+**Architecture enum**: `sliding_window`, `standardized`, `class_balanced`, or `ordinal`.
 
 #### `healthcheck`
 
@@ -381,16 +404,20 @@ lampe-cli train <arch> <matpath>
         │       └── ensures no patient spans train+val boundary
         │
         └── for each fold:
-                ├── {Sliding|Standardized|ClassBalanced}Dataset(mat_reader, eff_fov_indices)
+                ├── {Sliding|Standardized|ClassBalanced|Ordinal}Dataset(mat_reader, eff_fov_indices)
                 │       └── 25 overlapping 224×224 patches per FOV
-                │           [Standardized/ClassBalanced: z-score normalize w/ train stats]
-                │           [ClassBalanced only: prints class distribution, computes sample_weights]
-                │           [ClassBalanced only: hflip/vflip/rot90 augmentation (train split)]
+                │           [Standardized/ClassBalanced/Ordinal: z-score normalize w/ train stats]
+                │           [ClassBalanced/Ordinal: prints class distribution, computes sample_weights]
+                │           [ClassBalanced/Ordinal: hflip/vflip/rot90 augmentation (train split)]
+                │           [Ordinal only: encode_ordinal -> (patch, ordinal_vec, class_int, pid)]
                 │
                 ├── ResNet18(pretrained) → freeze all → unfreeze layer4
-                │       └── head: Dropout(0.5) → Linear(512, 4)
+                │       └── head: Dropout(0.5) → Linear(512, 4)  [sliding/standardized/class_balanced]
+                │           Dropout(0.5) → Linear(512, 3)  [ordinal: K-1 threshold logits]
                 │
-                ├── Adam(lr=1e-4) + CrossEntropyLoss + EarlyStopping(patience=5)
+                ├── CrossEntropyLoss [sliding/standardized/class_balanced]
+                │   BCEWithLogitsLoss  [ordinal]
+                ├── Adam(lr=1e-4) + EarlyStopping(patience=5)
                 │   [ClassBalanced only: WeightedRandomSampler on train_loader]
                 │
                 └── artifacts/fold-{n}/

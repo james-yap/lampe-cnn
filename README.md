@@ -56,7 +56,7 @@ uv run lampe-cli inference
 
 | Command | Argument | Description |
 |:---|:---|:---|
-| `train` | `architecture` | Architecture name (`sliding_window`, `standardized`, `class_balanced`) |
+| `train` | `architecture` | Architecture name (`sliding_window`, `standardized`, `class_balanced`, `ordinal`) |
 | `train` | `matpath` | Path to the directory containing `.mat` dataset files |
 | `inference` | — | Run inference (in progress) |
 

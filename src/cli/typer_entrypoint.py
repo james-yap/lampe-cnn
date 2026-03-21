@@ -25,6 +25,7 @@ class Architecture(str, Enum):
     SLIDING_WINDOW = "sliding_window"
     STANDARDIZED = "standardized"
     CLASS_BALANCED = "class_balanced"
+    ORDINAL = "ordinal"
 
 
 @app.command()
@@ -76,7 +77,7 @@ def train(
     from matplotlib import pyplot as plt
 
     # package
-    from architectures import sliding_window, standardized, class_balanced
+    from architectures import sliding_window, standardized, class_balanced, ordinal
     from torch.utils.data import WeightedRandomSampler
     from shared.mat_reader import MatReader
     from shared.early_stopping import EarlyStopping
@@ -189,13 +190,44 @@ def train(
                 num_samples=len(cb_train),
                 replacement=True,
             )
-            train_loader = DataLoader(train_subset, batch_size=batch_size, sampler=sampler)
+            train_loader = DataLoader(
+                train_subset, batch_size=batch_size, sampler=sampler
+            )
+        elif architecture == Architecture.ORDINAL:
+            ord_train = ordinal.OrdinalDataset(
+                mat_reader,
+                eff_fov_indices=train_indices.tolist(),
+                factor=hyperparams["sliding_factor"],
+                train=True,
+            )
+            val_subset = ordinal.OrdinalDataset(
+                mat_reader,
+                eff_fov_indices=val_indices.tolist(),
+                factor=hyperparams["sliding_factor"],
+                train=False,
+                mean_override=ord_train.mean,  # prevent data leakage by using train stats
+                std_override=ord_train.std,
+            )
+            train_subset = ord_train
+            model = ordinal.get_model(num_classes=NUM_CLASSES).to(device)
+            sampler = WeightedRandomSampler(
+                weights=ord_train.sample_weights.tolist(),
+                num_samples=len(ord_train),
+                replacement=True,
+            )
+            train_loader = DataLoader(
+                train_subset, batch_size=batch_size, sampler=sampler
+            )
         else:
             raise NotImplementedError(f"Architecture {architecture} not implemented.")
 
         val_loader = DataLoader(val_subset, batch_size=batch_size, shuffle=False)
 
-        criterion = torch.nn.CrossEntropyLoss()
+        criterion: torch.nn.Module = (
+            torch.nn.BCEWithLogitsLoss()
+            if architecture == Architecture.ORDINAL
+            else torch.nn.CrossEntropyLoss()
+        )
         optimizer = torch.optim.Adam(model.parameters(), lr=lr)
         early_stopping = EarlyStopping(patience=patience)
 
@@ -208,11 +240,18 @@ def train(
             # train
             model.train()
             running_loss = 0.0
-            for patches, labels, _patient_ids in train_loader:
-                patches, labels = patches.to(device), labels.to(device)
+            for batch in train_loader:
+                if architecture == Architecture.ORDINAL:
+                    patches, ordinal_targets, _int_class_labels, _patient_ids = batch
+                    patches = patches.to(device)
+                    targets = ordinal_targets.to(device)  # (batch, K-1) float
+                else:
+                    patches, int_class_labels, _patient_ids = batch
+                    patches = patches.to(device)
+                    targets = int_class_labels.to(device)
                 optimizer.zero_grad()
                 outputs = model(patches)
-                loss = criterion(outputs, labels)
+                loss = criterion(outputs, targets)
                 loss.backward()
                 optimizer.step()
                 running_loss += loss.item() * patches.size(0)
@@ -228,14 +267,21 @@ def train(
             model.eval()
             val_loss = 0.0
             with torch.no_grad():  # no need to track gradients during validation
-                for patches, labels, _patient_ids in val_loader:
-                    patches, labels = patches.to(device), labels.to(device)
+                for batch in val_loader:
+                    if architecture == Architecture.ORDINAL:
+                        patches, ordinal_targets, int_class_labels, _patient_ids = batch
+                        patches = patches.to(device)
+                        targets = ordinal_targets.to(device)  # (batch, K-1) float
+                    else:
+                        patches, int_class_labels, _patient_ids = batch
+                        patches = patches.to(device)
+                        targets = int_class_labels.to(device)
                     outputs = model(patches)
-                    loss = criterion(outputs, labels)
+                    loss = criterion(outputs, targets)
                     val_loss += loss.item() * patches.size(0)
                     all_preds.append(outputs.cpu())
-                    all_labels.append(labels.cpu())
-                    for label, pid in zip(labels.cpu().numpy(), _patient_ids):
+                    all_labels.append(int_class_labels.cpu())
+                    for label, pid in zip(int_class_labels.numpy(), _patient_ids):
                         assert pid not in seen_in_training, (
                             "Data leakage detected: "
                             f"Patient ID {pid} found in both training and validation sets!"
@@ -279,17 +325,38 @@ def train(
         if all_preds and all_labels:
             all_labels_np = torch.cat(all_labels).numpy()
             all_preds_cat = torch.cat(all_preds)
-            all_probs = torch.softmax(all_preds_cat, dim=1).numpy()
+
+            if architecture == Architecture.ORDINAL:
+                # Decode K-1 ordinal logits to integer class predictions
+                pred_classes_np = ordinal.decode_ordinal(all_preds_cat).numpy()
+                # Reconstruct per-class probability estimates from cumulative sigmoid:
+                #   P(class=0) = 1 - σ(logit_0)
+                #   P(class=k) = σ(logit_{k-1}) - σ(logit_k)  for 0 < k < K-1
+                #   P(class=K-1) = σ(logit_{K-2})
+                # This gives a valid probability mass function over all 4 classes.
+                sigm = torch.sigmoid(all_preds_cat).numpy()
+                all_probs = np.concatenate(
+                    [
+                        1.0 - sigm[:, 0:1],
+                        sigm[:, 0:1] - sigm[:, 1:2],
+                        sigm[:, 1:2] - sigm[:, 2:3],
+                        sigm[:, 2:3],
+                    ],
+                    axis=1,
+                )
+            else:
+                pred_classes_np = all_preds_cat.argmax(dim=1).numpy()
+                all_probs = torch.softmax(all_preds_cat, dim=1).numpy()
 
             cm = confusion_matrix(
                 all_labels_np,
-                all_preds_cat.argmax(dim=1).numpy(),
+                pred_classes_np,
                 labels=list(range(NUM_CLASSES)),
             )
 
             cr = classification_report(
                 all_labels_np,
-                all_preds_cat.argmax(dim=1).numpy(),
+                pred_classes_np,
                 output_dict=False,
                 zero_division=0,  # type: ignore[call-overload]
             )
