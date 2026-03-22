@@ -96,14 +96,15 @@ src/
 │   ├── standardized.py        # Sliding window CNN + per-channel normalization
 │   ├── class_balanced.py      # + class imbalance handling, geometric augmentation
 │   ├── ordinal.py             # + K-1 ordinal label encoding
-│   └── regularized.py        # + weight decay, phased unfreezing, ReduceLROnPlateau
+│   ├── regularized.py        # + weight decay, phased unfreezing, ReduceLROnPlateau
+│   └── continuous_aug.py     # + continuous rotation/translation, Gaussian noise
 ├── cli/
 │   └── typer_entrypoint.py    # lampe-cli entry point
 └── shared/
     ├── early_stopping.py      # Patience-based early stopping
     ├── mat_reader.py          # MATLAB .mat file loader
-    ├── report.py              # FoldReporter — fold evaluation visualisation (planned)
-    └── optimizer_engine.py    # OptimizerEngine — architecture-aware optimizer config (planned)
+    ├── report.py              # FoldReporter — fold evaluation visualisation
+    └── optimizer_engine.py    # OptimizerEngine — architecture-aware optimizer config
 ```
 
 All three sub-packages carry `py.typed` marker files (PEP 561), and type annotations are enforced via Pyright (`pyrightconfig.json`).
@@ -158,7 +159,7 @@ class FoldReporter:
 
 The `is_ordinal` flag selects between two decode paths: cumulative sigmoid + ordinal decode vs. argmax + softmax. All plot rendering (2×2 grid: loss curve, confusion matrix, ROC curves, classification report text) and file I/O are encapsulated inside `save()`.
 
-### `OptimizerEngine` (`shared/optimizer_engine.py`) *(planned — see `plan_refactor_utils.md`)*
+### `OptimizerEngine` (`shared/optimizer_engine.py`)
 
 Stateful object that encapsulates all optimizer, loss criterion, learning rate scheduler, and phased-unfreezing logic for one fold's training run. Constructed via a `for_architecture()` classmethod that translates an `Architecture` enum value into a set of boolean capability flags, keeping the architecture-specific conditional logic in one place.
 
@@ -183,6 +184,7 @@ Current architecture → flag mapping:
 | `CLASS_BALANCED` | ✗ | ✗ | ✗ | ✗ |
 | `ORDINAL` | ✓ | ✗ | ✗ | ✗ |
 | `REGULARIZED` | ✓ | ✓ | ✓ | ✓ |
+| `CONTINUOUS_AUG` | ✓ | ✓ | ✓ | ✓ |
 
 ---
 
@@ -276,6 +278,22 @@ When `freeze_all=True`, layer4 stays frozen from epoch 0; the CLI (or `Optimizer
 
 This architecture is paired with `OptimizerEngine` flags: weight decay, `ReduceLROnPlateau` scheduler, and phased unfreezing all active.
 
+### 6.6 `continuous_aug.py` — Continuous Augmentation Architecture
+
+Builds on `regularized.py` by replacing the discrete fixed-stride augmentation pipeline with three augmentations that make the probability of seeing an identical training tensor twice effectively zero:
+
+1. **Random crop (continuous translation)**: At `__getitem__` time, the train split samples a uniformly random top-left corner `(y, x)` from the full valid crop range `[0, H−224] × [0, W−224]`. The validation split retains the fixed stride grid for reproducibility.
+
+2. **Continuous rotation** (`TF.rotate`, `U(0°, 360°)`): Replaces `rot90` (4 discrete values) with a bilinear-interpolated rotation at a uniformly random angle. Corners are padded with `0.0` (the z-score normalised background value).
+
+3. **Additive Gaussian noise** (σ=0.02, post-normalisation, train only): A small per-sample noise sample is added after z-score normalisation. This is approximately 1–2% of the typical inter-class z-score signal range — conservative enough to preserve spectral texture while guaranteeing every training tensor is unique.
+
+**Root cause addressed**: The previous discrete pipeline yielded at most 2 × 2 × 4 = 16 unique augmented variants per patch. With `WeightedRandomSampler` oversampling the Healthy class by ~9.5×, the same patch could be seen in identical form dozens of times per epoch, creating a direct memorisation path. `ContinuousAugDataset` closes this by making the augmentation space infinite.
+
+**Dataset interface**: `ContinuousAugDataset` exposes the same attributes as `OrdinalDataset` (`sample_weights`, `mean`, `std`, `num_patches_per_fov`) so the CLI fold branch requires no structural changes beyond the class name.
+
+**Re-exports**: `OrdinalDatapoint`, `CLASS_NAMES`, `encode_ordinal`, `decode_ordinal`, and `get_model` are all re-exported from `regularized.py` unchanged.
+
 ---
 
 ## 7. CLI (`cli/typer_entrypoint.py`)
@@ -299,7 +317,7 @@ Full training pipeline with cross-validation.
 | `--weight-decay` | `-w` | 1e-4 | L2 weight decay (REGULARIZED only) |
 | `--head-only-epochs` | `-H` | 3 | Head-only training epochs before layer4 unfreezes (REGULARIZED only) |
 
-**Architecture enum**: `sliding_window`, `standardized`, `class_balanced`, `ordinal`, or `regularized`.
+**Architecture enum**: `sliding_window`, `standardized`, `class_balanced`, `ordinal`, `regularized`, or `continuous_aug`.
 
 #### `healthcheck`
 
@@ -436,12 +454,10 @@ The 25 patches per FOV imply the full images are large enough that with factor=5
 - `class_balanced.py`: Addresses class imbalance via geometric augmentation and `WeightedRandomSampler`.
 - `ordinal.py`: K-1 ordinal label encoding, `BCEWithLogitsLoss`, ordinal decode.
 - `regularized.py`: Phased layer unfreezing, weight decay, `ReduceLROnPlateau`.
+- `continuous_aug.py`: Continuous rotation/translation, Gaussian noise — breaks discrete augmentation pigeonhole.
+- `shared/report.py` (`FoldReporter`): fold evaluation / visualisation with 2×3 mosaic (loss, train CM, val CM, ROC, classification report).
+- `shared/optimizer_engine.py` (`OptimizerEngine`): architecture-aware optimizer, criterion, scheduler, and phased-unfreezing.
 - `--weight-decay` (`-w`) and `--head-only-epochs` (`-H`) CLI options.
-
-### Planned Refactors
-
-- `shared/report.py` (`FoldReporter`): extract fold evaluation / visualisation from CLI. See `docs/plan_refactor_utils.md`.
-- `shared/optimizer_engine.py` (`OptimizerEngine`): extract optimizer, criterion, scheduler, and phased-unfreezing from CLI. See `docs/plan_refactor_utils.md`.
 
 ### Incomplete Modules
 

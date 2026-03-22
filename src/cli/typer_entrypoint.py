@@ -27,19 +27,20 @@ class Architecture(str, Enum):
     CLASS_BALANCED = "class_balanced"
     ORDINAL = "ordinal"
     REGULARIZED = "regularized"
+    CONTINUOUS_AUG = "continuous_aug"
 
 
 @app.command()
 def train(
     architecture: Architecture,
     matpath: str,
-    num_epochs: int = typer.Option(20, "-e", help="Number of training epochs"),
-    n_folds: int = typer.Option(6, "-f", help="Number of folds for cross-validation"),
+    num_epochs: int = typer.Option(60, "-e", help="Number of training epochs"),
+    n_folds: int = typer.Option(4, "-f", help="Number of folds for cross-validation"),
     batch_size: int = typer.Option(
         32, "-b", help="Batch size for training and validation"
     ),
     lr: float = typer.Option(1e-4, "-l", help="Learning rate for the optimizer"),
-    patience: int = typer.Option(5, "-p", help="Patience for early stopping"),
+    patience: int = typer.Option(10, "-p", help="Patience for early stopping"),
     save_weights: bool = typer.Option(
         False, "-s", help="Whether to save model weights after training"
     ),
@@ -47,7 +48,7 @@ def train(
         1e-4, "-w", help="L2 weight decay for Adam optimizer (REGULARIZED only)"
     ),
     head_only_epochs: int = typer.Option(
-        3,
+        50,
         "-H",
         help="Epochs to train head-only before unfreezing layer4 (REGULARIZED only)",
     ),
@@ -82,6 +83,7 @@ def train(
         class_balanced,
         ordinal,
         regularized,
+        continuous_aug,
     )
     from torch.utils.data import WeightedRandomSampler
     from shared.mat_reader import MatReader
@@ -103,7 +105,9 @@ def train(
         "weight_decay": weight_decay,
         "head_only_epochs": head_only_epochs,
         "lr_scheduler": (
-            "ReduceLROnPlateau" if architecture == Architecture.REGULARIZED else "none"
+            "ReduceLROnPlateau"
+            if architecture in (Architecture.REGULARIZED, Architecture.CONTINUOUS_AUG)
+            else "none"
         ),
     }
 
@@ -262,6 +266,33 @@ def train(
             train_loader = DataLoader(
                 train_subset, batch_size=batch_size, sampler=sampler
             )
+        elif architecture == Architecture.CONTINUOUS_AUG:
+            ca_train = continuous_aug.ContinuousAugDataset(
+                mat_reader,
+                eff_fov_indices=train_indices.tolist(),
+                factor=hyperparams["sliding_factor"],
+                train=True,
+            )
+            val_subset = continuous_aug.ContinuousAugDataset(
+                mat_reader,
+                eff_fov_indices=val_indices.tolist(),
+                factor=hyperparams["sliding_factor"],
+                train=False,
+                mean_override=ca_train.mean,
+                std_override=ca_train.std,
+            )
+            train_subset = ca_train
+            model = continuous_aug.get_model(
+                num_classes=NUM_CLASSES, freeze_all=(head_only_epochs > 0)
+            ).to(device)
+            sampler = WeightedRandomSampler(
+                weights=ca_train.sample_weights.tolist(),
+                num_samples=len(ca_train),
+                replacement=True,
+            )
+            train_loader = DataLoader(
+                train_subset, batch_size=batch_size, sampler=sampler
+            )
         else:
             raise NotImplementedError(f"Architecture {architecture} not implemented.")
 
@@ -292,7 +323,11 @@ def train(
             running_loss = 0.0
             train_preds_last, train_labels_last = [], []
             for batch in train_loader:
-                if architecture in (Architecture.ORDINAL, Architecture.REGULARIZED):
+                if architecture in (
+                    Architecture.ORDINAL,
+                    Architecture.REGULARIZED,
+                    Architecture.CONTINUOUS_AUG,
+                ):
                     patches, ordinal_targets, int_class_labels, _patient_ids = batch
                     patches = patches.to(device)
                     targets = ordinal_targets.to(device)  # (batch, K-1) float
@@ -322,7 +357,11 @@ def train(
             val_loss = 0.0
             with torch.no_grad():  # no need to track gradients during validation
                 for batch in val_loader:
-                    if architecture in (Architecture.ORDINAL, Architecture.REGULARIZED):
+                    if architecture in (
+                        Architecture.ORDINAL,
+                        Architecture.REGULARIZED,
+                        Architecture.CONTINUOUS_AUG,
+                    ):
                         patches, ordinal_targets, int_class_labels, _patient_ids = batch
                         patches = patches.to(device)
                         targets = ordinal_targets.to(device)  # (batch, K-1) float
@@ -386,9 +425,15 @@ def train(
                 all_preds=torch.cat(all_preds),
                 all_labels=torch.cat(all_labels),
                 train_preds=torch.cat(train_preds_last) if train_preds_last else None,
-                train_labels=torch.cat(train_labels_last) if train_labels_last else None,
+                train_labels=(
+                    torch.cat(train_labels_last) if train_labels_last else None
+                ),
                 is_ordinal=architecture
-                in (Architecture.ORDINAL, Architecture.REGULARIZED),
+                in (
+                    Architecture.ORDINAL,
+                    Architecture.REGULARIZED,
+                    Architecture.CONTINUOUS_AUG,
+                ),
             )
 
 

@@ -105,11 +105,12 @@ class OptimizerEngine:
           class_balanced   False        False         False      False
           ordinal          True         False         False      False
           regularized      True         True          True       True
+          continuous_aug   True         True          True       True
         """
-        use_ordinal_loss = architecture in ("ordinal", "regularized")
-        use_weight_decay = architecture == "regularized"
-        use_scheduler = architecture == "regularized"
-        use_phased_unfreezing = architecture == "regularized"
+        use_ordinal_loss = architecture in ("ordinal", "regularized", "continuous_aug")
+        use_weight_decay = architecture in ("regularized", "continuous_aug")
+        use_scheduler = architecture in ("regularized", "continuous_aug")
+        use_phased_unfreezing = architecture in ("regularized", "continuous_aug")
 
         return cls(
             model=model,
