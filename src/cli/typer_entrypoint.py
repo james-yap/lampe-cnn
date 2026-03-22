@@ -28,6 +28,7 @@ class Architecture(str, Enum):
     ORDINAL = "ordinal"
     REGULARIZED = "regularized"
     CONTINUOUS_AUG = "continuous_aug"
+    MIL = "mil"
 
 
 @app.command()
@@ -84,6 +85,7 @@ def train(
         ordinal,
         regularized,
         continuous_aug,
+        mil,
     )
     from torch.utils.data import WeightedRandomSampler
     from shared.mat_reader import MatReader
@@ -106,7 +108,12 @@ def train(
         "head_only_epochs": head_only_epochs,
         "lr_scheduler": (
             "ReduceLROnPlateau"
-            if architecture in (Architecture.REGULARIZED, Architecture.CONTINUOUS_AUG)
+            if architecture
+            in (
+                Architecture.REGULARIZED,
+                Architecture.CONTINUOUS_AUG,
+                Architecture.MIL,
+            )
             else "none"
         ),
     }
@@ -293,6 +300,33 @@ def train(
             train_loader = DataLoader(
                 train_subset, batch_size=batch_size, sampler=sampler
             )
+        elif architecture == Architecture.MIL:
+            mil_train = mil.MILDataset(
+                mat_reader,
+                eff_fov_indices=train_indices.tolist(),
+                factor=hyperparams["sliding_factor"],
+                train=True,
+            )
+            val_subset = mil.MILDataset(
+                mat_reader,
+                eff_fov_indices=val_indices.tolist(),
+                factor=hyperparams["sliding_factor"],
+                train=False,
+                mean_override=mil_train.mean,
+                std_override=mil_train.std,
+            )
+            train_subset = mil_train
+            model = mil.get_model(
+                num_classes=NUM_CLASSES, freeze_all=(head_only_epochs > 0)
+            ).to(device)
+            sampler = WeightedRandomSampler(
+                weights=mil_train.sample_weights.tolist(),
+                num_samples=len(mil_train),
+                replacement=True,
+            )
+            train_loader = DataLoader(
+                train_subset, batch_size=batch_size, sampler=sampler
+            )
         else:
             raise NotImplementedError(f"Architecture {architecture} not implemented.")
 
@@ -323,7 +357,19 @@ def train(
             running_loss = 0.0
             train_preds_last, train_labels_last = [], []
             for batch in train_loader:
-                if architecture in (
+                if architecture == Architecture.MIL:
+                    bags, int_class_labels, _patient_ids = batch
+                    bags = bags.to(device)
+                    targets = int_class_labels.to(device)
+                    engine.optimizer.zero_grad()
+                    mil_out: tuple[torch.Tensor, torch.Tensor] = model(bags)  # type: ignore[assignment]
+                    mil_logits, _mil_attn = mil_out
+                    outputs = mil_logits
+                    loss = engine.criterion(outputs, targets)
+                    loss.backward()
+                    engine.optimizer.step()
+                    running_loss += loss.item() * bags.size(0)
+                elif architecture in (
                     Architecture.ORDINAL,
                     Architecture.REGULARIZED,
                     Architecture.CONTINUOUS_AUG,
@@ -331,16 +377,22 @@ def train(
                     patches, ordinal_targets, int_class_labels, _patient_ids = batch
                     patches = patches.to(device)
                     targets = ordinal_targets.to(device)  # (batch, K-1) float
+                    engine.optimizer.zero_grad()
+                    outputs = model(patches)
+                    loss = engine.criterion(outputs, targets)
+                    loss.backward()
+                    engine.optimizer.step()
+                    running_loss += loss.item() * patches.size(0)
                 else:
                     patches, int_class_labels, _patient_ids = batch
                     patches = patches.to(device)
                     targets = int_class_labels.to(device)
-                engine.optimizer.zero_grad()
-                outputs = model(patches)
-                loss = engine.criterion(outputs, targets)
-                loss.backward()
-                engine.optimizer.step()
-                running_loss += loss.item() * patches.size(0)
+                    engine.optimizer.zero_grad()
+                    outputs = model(patches)
+                    loss = engine.criterion(outputs, targets)
+                    loss.backward()
+                    engine.optimizer.step()
+                    running_loss += loss.item() * patches.size(0)
                 # collect for train confusion matrix (last epoch's data used at report time)
                 train_preds_last.append(outputs.detach().cpu())
                 train_labels_last.append(int_class_labels.cpu())
@@ -357,7 +409,16 @@ def train(
             val_loss = 0.0
             with torch.no_grad():  # no need to track gradients during validation
                 for batch in val_loader:
-                    if architecture in (
+                    if architecture == Architecture.MIL:
+                        bags, int_class_labels, _patient_ids = batch
+                        bags = bags.to(device)
+                        targets = int_class_labels.to(device)
+                        mil_val_out: tuple[torch.Tensor, torch.Tensor] = model(bags)  # type: ignore[assignment]
+                        mil_val_logits, _mil_val_attn = mil_val_out
+                        outputs = mil_val_logits
+                        loss = engine.criterion(outputs, targets)
+                        val_loss += loss.item() * bags.size(0)
+                    elif architecture in (
                         Architecture.ORDINAL,
                         Architecture.REGULARIZED,
                         Architecture.CONTINUOUS_AUG,
@@ -365,13 +426,16 @@ def train(
                         patches, ordinal_targets, int_class_labels, _patient_ids = batch
                         patches = patches.to(device)
                         targets = ordinal_targets.to(device)  # (batch, K-1) float
+                        outputs = model(patches)
+                        loss = engine.criterion(outputs, targets)
+                        val_loss += loss.item() * patches.size(0)
                     else:
                         patches, int_class_labels, _patient_ids = batch
                         patches = patches.to(device)
                         targets = int_class_labels.to(device)
-                    outputs = model(patches)
-                    loss = engine.criterion(outputs, targets)
-                    val_loss += loss.item() * patches.size(0)
+                        outputs = model(patches)
+                        loss = engine.criterion(outputs, targets)
+                        val_loss += loss.item() * patches.size(0)
                     all_preds.append(outputs.cpu())
                     all_labels.append(int_class_labels.cpu())
                     for label, pid in zip(int_class_labels.numpy(), _patient_ids):

@@ -225,9 +225,9 @@ include `MIL`.
 
 ### MIL Dataset
 
-- [ ] **M.1** Create `src/architectures/mil.py`
-- [ ] **M.2** Define `MILDatapoint = tuple[Tensor, int, str]` — `(N_patches, C, H, W)` bag tensor, class label, patient ID
-- [ ] **M.3** Implement `MILDataset(Dataset[MILDatapoint])`:
+- [x] **M.1** Create `src/architectures/mil.py`
+- [x] **M.2** Define `MILDatapoint = tuple[Tensor, int, str]` — `(N_patches, C, H, W)` bag tensor, class label, patient ID
+- [x] **M.3** Implement `MILDataset(Dataset[MILDatapoint])`:
   - Constructor: same signature as `ContinuousAugDataset` (mat_reader, eff_fov_indices, factor, train, mean_override, std_override)
   - `__len__` returns number of FOVs (not patches)
   - `__getitem__(fov_idx)` extracts all `num_patches_per_fov` patches, applies z-score normalisation + continuous augmentation per-patch (same as `ContinuousAugDataset`), returns bag tensor `(N, 3, 224, 224)` + label + patient_id
@@ -236,7 +236,7 @@ include `MIL`.
 
 ### MIL Model
 
-- [ ] **M.4** Implement `AttentionMIL(nn.Module)`:
+- [x] **M.4** Implement `AttentionMIL(nn.Module)`:
   - Constructor takes `num_classes=4`, `freeze_all=False`
   - `backbone`: ResNet18 with fc head removed, `avgpool` output → 512-dim feature per patch
   - `attention_V`: `Linear(512, 128)` + `Tanh`
@@ -244,11 +244,11 @@ include `MIL`.
   - `classifier`: `Dropout(0.5)` + `Linear(512, num_classes)`
   - `forward(bag: Tensor) -> tuple[Tensor, Tensor]`: `bag` is `(N_patches, C, H, W)`; returns `((num_classes,) logits, (N_patches,) attention weights)` — attention weights are ignored during training/val but are consumed by `lampe-cli infer`
   - Phased unfreezing: when `freeze_all=True`, `backbone.layer4` stays frozen; CLI adds it via `add_param_group` on `model.backbone.layer4.parameters()`
-- [ ] **M.5** Add `def get_model(num_classes=4, freeze_all=False) -> nn.Module` factory in `mil.py`
+- [x] **M.5** Add `def get_model(num_classes=4, freeze_all=False) -> nn.Module` factory in `mil.py`
 
 ### `OptimizerEngine` Update
 
-- [ ] **M.6** Add `"mil"` to `OptimizerEngine.for_architecture()` in `shared/optimizer_engine.py`:
+- [x] **M.6** Add `"mil"` to `OptimizerEngine.for_architecture()` in `shared/optimizer_engine.py`:
   - `use_ordinal_loss = False`
   - `use_weight_decay = True`
   - `use_scheduler = True`
@@ -257,21 +257,21 @@ include `MIL`.
 
 ### CLI Updates
 
-- [ ] **M.8** Add `MIL = "mil"` to `Architecture` enum in `typer_entrypoint.py`
-- [ ] **M.9** Add `mil` to lazy imports
-- [ ] **M.10** Add `MIL` fold branch:
+- [x] **M.8** Add `MIL = "mil"` to `Architecture` enum in `typer_entrypoint.py`
+- [x] **M.9** Add `mil` to lazy imports
+- [x] **M.10** Add `MIL` fold branch:
   - `MILDataset` for train + val
   - `WeightedRandomSampler` at FOV level (one weight per FOV)
   - `DataLoader` with `batch_size=4` (4 FOVs per step, each a bag of 25 patches); bags stack cleanly since all FOVs produce the same `num_patches_per_fov` patches, so no custom `collate_fn` is needed
   - `get_model(freeze_all=(head_only_epochs > 0))`
-- [ ] **M.11** Batch unpacking: `bags, int_class_labels, _patient_ids = batch` (3-tuple — not 4-tuple; do not add MIL to the ordinal guard)
-- [ ] **M.12** Phase transition block: same `engine.maybe_transition_phase(epoch)` pattern as REGULARIZED; `OptimizerEngine` handles `add_param_group` on `model.backbone.layer4`
-- [ ] **M.13** Val loop: unpack `logits, _attn = model(bag)` — attention weights are discarded during training/val (used only at inference time)
-- [ ] **M.14** `reporter.save(...)` call: `is_ordinal=False`; `train_preds` / `train_labels` collected as in other architectures
+- [x] **M.11** Batch unpacking: `bags, int_class_labels, _patient_ids = batch` (3-tuple — not 4-tuple; do not add MIL to the ordinal guard)
+- [x] **M.12** Phase transition block: same `engine.maybe_transition_phase(epoch)` pattern as REGULARIZED; `OptimizerEngine` handles `add_param_group` on `model.backbone.layer4`
+- [x] **M.13** Val loop: unpack `logits, _attn = model(bag)` — attention weights are discarded during training/val (used only at inference time)
+- [x] **M.14** `reporter.save(...)` call: `is_ordinal=False`; `train_preds` / `train_labels` collected as in other architectures
 
 ### Validation
 
-- [ ] **M.15** Run `uv run pyright src/` — expect 0 errors
+- [x] **M.15** Run `uv run pyright src/` — expect 0 errors
 - [ ] **M.16** Smoke run: `lampe-cli train mil <matpath> -e 5 -b 4` — verify:
   - Class distribution prints once per FOV split (not per patch)
   - "Phase 2" message appears at correct epoch
