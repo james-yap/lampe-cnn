@@ -443,11 +443,11 @@ The 25 patches per FOV imply the full images are large enough that with factor=5
 
 | Item | Status |
 |---|---|
-| `inference` CLI command | Mentioned in README, no code exists |
+| `inference` CLI command | Mentioned in README, no code exists — full spec now in `docs/plans/plan_mil.md` (`lampe-cli infer` + `lampe-cli dataset-info`) |
 | Fixed held-out test set | Not implemented |
 | Ensemble binary classifiers | Not implemented |
 | GradCAM / attention visualization | Not implemented |
-| MIL (Multiple Instance Learning) | Planned — see `docs/plan_mil.md` |
+| MIL (Multiple Instance Learning) | Planned — see `docs/plans/plan_mil.md` (updated with continuous_aug results; heatmap artifact specified) |
 
 ### Implemented
 
