@@ -1,0 +1,25 @@
+---
+Transfer Learning Overfitting:
+---
+Accuracy scores have increased noticeably.
+Still collapses immediately when freezing is removed.
+Val follows train closely, which is incredibly good.
+
+50 + 10 epochs is clearly not enough. We can push it further.
+This will be tuned in hyperparams. No code implementation needed.
+
+---
+Ordinal Hedging Effect
+---
+"ordinal hedging" effect still present.
+next iteration will focus on this.
+model collapses to prefer middle classes.
+edge classes in K-1 require more activation to reach,
+    so model learns to hedge by predicting middle classes more often.
+
+Real signal is at FOV level, patch-level has too much noise. MIL may be the solution.
+Introduce a new capability flag for MIL to produce heatmap.png as an additional artifact.
+
+Revisit docs/plans/plan_mil.md.
+We have added a continuous_aug among some other changes since then,
+    so update plan_mil.md and research.md.

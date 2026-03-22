@@ -1,0 +1,36 @@
+Added a second confusion matrix for training.
+Verify that WeightedRandomSampler, stratification, and class balancing dataset are working as intended.
+
+Validation confusion matrix represents real data and distribution,
+so does not contain augmentation that would balance out the classes.
+So training CM is needed.
+
+Results:
+- Training CM shows that balancing is working as intended.
+- All classes have about ~950 datapoints per epoch in training.
+  
+Other observations:
+- Random rotation augmentation only provides an additional 3  angles (90°/180°/270°)
+- "support" for "Healthy" during validation is ~100 datapoints.
+- During training, "Healthy" is blown up to ~950 datapoints to match other classes.
+- Pigeonhole principle: duplicate datapoints seen during training -> memorization.
+
+- Model seems to prefer middle classes ("Mild" and "Moderate") over "Healthy" and "Severe".
+- Collapsing toward middle classes: "Ordinal Hedging Effect".
+- Is there a numeric/statistical reason due to the ordinal classification setup?
+
+- AUC vs Accuracy: AUC scores for class 0 (Healthy) are great.
+- However, precision/recall is abysmal.
+- Indicates a thresholding problem: rank "Healthy" correctly but too scared to predict it.
+
+Next steps:
+- Current implementation: Translational augmentation is fixed
+- Create a new architecture based on "regularized" that randomizes translation augmentation.
+- Rely on WeightedRandomSampler to balance out the classes.
+- Ensure continuous geometric augmentations on both rotation and translation instead of fixed angles/offsets.
+- Inject tiny amount of random Gaussian noise to create infinite number of unique tensors without destroying
+  underlying spectral signature of the SRS and SHG microscopy data.
+
+Additional notes:
+- Ensure Optimizer Engine treats this new architecture like "regularized" and applies LR Scheduler and similar capability flags.
+- Update docs/research.md to reflect these changes.
