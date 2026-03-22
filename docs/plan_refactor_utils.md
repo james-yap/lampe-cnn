@@ -225,37 +225,35 @@ No changes needed (existing empty init is fine; consumers import with full path)
 
 ### `FoldReporter`
 
-- [ ] **R.1** Create `src/shared/report.py`
-- [ ] **R.2** Implement `FoldReporter.__init__(self, num_classes, class_names)`
-- [ ] **R.3** Implement `FoldReporter.save(...)` — full decode → metrics → figure → save pipeline
-  - [ ] **R.3a** Ordinal decode path: `decode_ordinal` + cumulative sigmoid probs
-  - [ ] **R.3b** Standard decode path: argmax + softmax probs
-  - [ ] **R.3c** Metrics: `confusion_matrix`, `classification_report`, `label_binarize`
-  - [ ] **R.3d** 2×2 matplotlib figure: loss curve, confusion matrix, ROC curves, report text
-  - [ ] **R.3e** `plt.savefig` + `plt.close()`
-- [ ] **R.4** Add `report.py` to `SOURCES.txt` (or verify editable install picks it up automatically)
+- [x] **R.1** Create `src/shared/report.py`
+- [x] **R.2** Implement `FoldReporter.__init__(self, num_classes, class_names)`
+- [x] **R.3** Implement `FoldReporter.save(...)` — full decode → metrics → figure → save pipeline
+  - [x] **R.3a** Ordinal decode path: `decode_ordinal` + cumulative sigmoid probs
+  - [x] **R.3b** Standard decode path: argmax + softmax probs
+  - [x] **R.3c** Metrics: `confusion_matrix`, `classification_report`, `label_binarize`
+  - [x] **R.3d** 2×2 matplotlib figure: loss curve, confusion matrix, ROC curves, report text
+  - [x] **R.3e** `plt.savefig` + `plt.close()`
+- [x] **R.4** Add `report.py` to `SOURCES.txt` (or verify editable install picks it up automatically)
 
 ### `OptimizerEngine`
 
-- [ ] **O.1** Create `src/shared/optimizer_engine.py`
-- [ ] **O.2** Implement `OptimizerEngine.__init__(...)` with all flag-driven logic
-- [ ] **O.3** Implement `OptimizerEngine.for_architecture(cls, architecture, model, lr, weight_decay, head_only_epochs)` classmethod with the 5-architecture flag table
-- [ ] **O.4** Implement `OptimizerEngine.step_scheduler(val_loss)` — no-op if no scheduler
-- [ ] **O.5** Implement `OptimizerEngine.maybe_transition_phase(epoch) -> bool` — unfreeze + add_param_group once
+- [x] **O.1** Create `src/shared/optimizer_engine.py`
+- [x] **O.2** Implement `OptimizerEngine.__init__(...)` with all flag-driven logic
+- [x] **O.3** Implement `OptimizerEngine.for_architecture(cls, architecture, model, lr, weight_decay, head_only_epochs)` classmethod with the 5-architecture flag table
+- [x] **O.4** Implement `OptimizerEngine.step_scheduler(val_loss)` — no-op if no scheduler
+- [x] **O.5** Implement `OptimizerEngine.maybe_transition_phase(epoch) -> bool` — unfreeze + add_param_group once
 
 ### CLI Refactor
 
-- [ ] **C.1** Add `FoldReporter` and `OptimizerEngine` to the lazy import block in `train()`
-- [ ] **C.2** Remove the existing criterion / optimizer / scheduler construction lines
-- [ ] **C.3** Replace with `engine = OptimizerEngine.for_architecture(...)`; use `engine.criterion` and `engine.optimizer`
-- [ ] **C.4** Replace the phase-transition `if` block in the epoch loop with `engine.maybe_transition_phase(epoch)`
-- [ ] **C.5** Replace `if scheduler_step is not None: scheduler_step(val_loss)` with `engine.step_scheduler(val_loss)`
-- [ ] **C.6** Instantiate `reporter = FoldReporter(NUM_CLASSES, CLASS_NAMES)` before the fold loop
-- [ ] **C.7** Replace the `if all_preds and all_labels:` reporting block with `reporter.save(...)`
-- [ ] **C.8** Remove now-unused lazy imports: `confusion_matrix`, `classification_report`, `ConfusionMatrixDisplay`, `roc_curve`, `auc`, `label_binarize`, `plt`, `Callable`
+- [x] **C.1** Add `FoldReporter` and `OptimizerEngine` to the lazy import block in `train()`
+- [x] **C.2** Remove the existing criterion / optimizer / scheduler construction lines
+- [x] **C.3** Replace with `engine = OptimizerEngine.for_architecture(...)`; use `engine.criterion` and `engine.optimizer`
+- [x] **C.4** Replace the phase-transition `if` block in the epoch loop with `engine.maybe_transition_phase(epoch)`
+- [x] **C.5** Replace `if scheduler_step is not None: scheduler_step(val_loss)` with `engine.step_scheduler(val_loss)`
+- [x] **C.6** Instantiate `reporter = FoldReporter(NUM_CLASSES, CLASS_NAMES)` before the fold loop
+- [x] **C.7** Replace the `if all_preds and all_labels:` reporting block with `reporter.save(...)`
+- [x] **C.8** Remove now-unused lazy imports: `confusion_matrix`, `classification_report`, `ConfusionMatrixDisplay`, `roc_curve`, `auc`, `label_binarize`, `plt`, `Callable`
 
 ### Validation
 
-- [ ] **V.1** Run `uv run pyright src/` — expect 0 errors
-- [ ] **V.2** Smoke run `lampe-cli train regularized <matpath> -e 3` — verify `results.png` is generated and phase transition prints
-- [ ] **V.3** Verify `results.png` layout is identical to the pre-refactor output
+- [x] **V.1** Run `uv run pyright src/` — expect 0 errors ✓

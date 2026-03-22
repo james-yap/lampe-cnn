@@ -67,24 +67,13 @@ def train(
 
     # built-in
     import os
-    from collections.abc import Callable
     from datetime import datetime
     import json
-    import numpy as np
 
     # third-party
     import torch
     from torch.utils.data import DataLoader
     from sklearn.model_selection import StratifiedGroupKFold
-    from sklearn.metrics import (
-        confusion_matrix,
-        classification_report,
-        ConfusionMatrixDisplay,
-        roc_curve,
-        auc,
-    )
-    from sklearn.preprocessing import label_binarize
-    from matplotlib import pyplot as plt
 
     # package
     from architectures import (
@@ -97,6 +86,8 @@ def train(
     from torch.utils.data import WeightedRandomSampler
     from shared.mat_reader import MatReader
     from shared.early_stopping import EarlyStopping
+    from shared.report import FoldReporter
+    from shared.optimizer_engine import OptimizerEngine
 
     mat_reader = MatReader(matpath)
 
@@ -154,6 +145,11 @@ def train(
         mat_reader.images,
         mat_reader.class_labels,
         mat_reader.patient_ids,
+    )
+
+    reporter = FoldReporter(
+        num_classes=NUM_CLASSES,
+        class_names=["Healthy", "LGC", "HGC", "IDC"],
     )
 
     for fold, (train_indices, val_indices) in enumerate(
@@ -271,24 +267,13 @@ def train(
 
         val_loader = DataLoader(val_subset, batch_size=batch_size, shuffle=False)
 
-        criterion: torch.nn.Module = (
-            torch.nn.BCEWithLogitsLoss()
-            if architecture in (Architecture.ORDINAL, Architecture.REGULARIZED)
-            else torch.nn.CrossEntropyLoss()
+        engine = OptimizerEngine.for_architecture(
+            architecture=architecture.value,
+            model=model,
+            lr=lr,
+            weight_decay=weight_decay,
+            head_only_epochs=head_only_epochs,
         )
-        optimizer: torch.optim.Optimizer = torch.optim.Adam(model.parameters(), lr=lr)
-        # Store only the step callable to avoid pyright's self-referential type in ReduceLROnPlateau
-        scheduler_step: "Callable[[float], None] | None" = None
-        if architecture == Architecture.REGULARIZED:
-            optimizer = torch.optim.Adam(
-                [p for p in model.parameters() if p.requires_grad],
-                lr=lr,
-                weight_decay=weight_decay,
-            )
-            _plateau_scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(
-                optimizer, mode="min", factor=0.5, patience=3, min_lr=1e-6
-            )
-            scheduler_step = _plateau_scheduler.step
         early_stopping = EarlyStopping(patience=patience)
 
         train_losses, val_losses = [], []
@@ -297,25 +282,8 @@ def train(
         seen_in_training = set()  # used for data leakage detection
 
         for epoch in range(num_epochs):
-            # Phase 2: unfreeze layer4 after head_only_epochs
-            if (
-                architecture == Architecture.REGULARIZED
-                and head_only_epochs > 0
-                and epoch == head_only_epochs
-            ):
+            if engine.maybe_transition_phase(epoch):
                 print(f"  [Phase 2] Unfreezing layer4 at epoch {epoch + 1}")
-                layer4_params = [
-                    p for name, p in model.named_parameters() if "layer4" in name
-                ]
-                for p in layer4_params:
-                    p.requires_grad = True
-                optimizer.add_param_group(
-                    {
-                        "params": layer4_params,
-                        "lr": lr * 0.1,
-                        "weight_decay": weight_decay,
-                    }
-                )
 
             # train
             model.train()
@@ -329,11 +297,11 @@ def train(
                     patches, int_class_labels, _patient_ids = batch
                     patches = patches.to(device)
                     targets = int_class_labels.to(device)
-                optimizer.zero_grad()
+                engine.optimizer.zero_grad()
                 outputs = model(patches)
-                loss = criterion(outputs, targets)
+                loss = engine.criterion(outputs, targets)
                 loss.backward()
-                optimizer.step()
+                engine.optimizer.step()
                 running_loss += loss.item() * patches.size(0)
                 for pid in _patient_ids:
                     seen_in_training.add(pid)
@@ -357,7 +325,7 @@ def train(
                         patches = patches.to(device)
                         targets = int_class_labels.to(device)
                     outputs = model(patches)
-                    loss = criterion(outputs, targets)
+                    loss = engine.criterion(outputs, targets)
                     val_loss += loss.item() * patches.size(0)
                     all_preds.append(outputs.cpu())
                     all_labels.append(int_class_labels.cpu())
@@ -389,8 +357,7 @@ def train(
             )
 
             early_stopping(epoch_val_loss)
-            if scheduler_step is not None:
-                scheduler_step(epoch_val_loss)
+            engine.step_scheduler(epoch_val_loss)
             if early_stopping.early_stop:
                 print(f"Early stopping triggered at epoch {epoch + 1}")
                 break
@@ -405,99 +372,17 @@ def train(
             )
 
         if all_preds and all_labels:
-            all_labels_np = torch.cat(all_labels).numpy()
-            all_preds_cat = torch.cat(all_preds)
-
-            if architecture in (Architecture.ORDINAL, Architecture.REGULARIZED):
-                # Decode K-1 ordinal logits to integer class predictions
-                pred_classes_np = ordinal.decode_ordinal(all_preds_cat).numpy()
-                # Reconstruct per-class probability estimates from cumulative sigmoid:
-                #   P(class=0) = 1 - σ(logit_0)
-                #   P(class=k) = σ(logit_{k-1}) - σ(logit_k)  for 0 < k < K-1
-                #   P(class=K-1) = σ(logit_{K-2})
-                # This gives a valid probability mass function over all 4 classes.
-                sigm = torch.sigmoid(all_preds_cat).numpy()
-                all_probs = np.concatenate(
-                    [
-                        1.0 - sigm[:, 0:1],
-                        sigm[:, 0:1] - sigm[:, 1:2],
-                        sigm[:, 1:2] - sigm[:, 2:3],
-                        sigm[:, 2:3],
-                    ],
-                    axis=1,
-                )
-            else:
-                pred_classes_np = all_preds_cat.argmax(dim=1).numpy()
-                all_probs = torch.softmax(all_preds_cat, dim=1).numpy()
-
-            cm = confusion_matrix(
-                all_labels_np,
-                pred_classes_np,
-                labels=list(range(NUM_CLASSES)),
+            reporter.save(
+                fold=fold + 1,
+                output_dir=path_with_kfold,
+                train_losses=train_losses,
+                val_losses=val_losses,
+                all_preds=torch.cat(all_preds),
+                all_labels=torch.cat(all_labels),
+                is_ordinal=architecture in (
+                    Architecture.ORDINAL, Architecture.REGULARIZED
+                ),
             )
-
-            cr = classification_report(
-                all_labels_np,
-                pred_classes_np,
-                output_dict=False,
-                zero_division=0,  # type: ignore[call-overload]
-            )
-
-            all_labels_bin = label_binarize(
-                all_labels_np, classes=list(range(NUM_CLASSES))
-            )
-            assert isinstance(all_labels_bin, np.ndarray) and isinstance(
-                all_probs, np.ndarray
-            ), (
-                "Expected all_labels_bin and all_probs to be numpy arrays"
-                "after label binarization and softmax conversion, respectively."
-            )
-
-            fig, axes = plt.subplots(2, 2, figsize=(14, 11))
-            fig.suptitle(f"Fold {fold + 1} Evaluation", fontsize=14)
-
-            # Loss curve (top-left)
-            axes[0, 0].plot(train_losses, label="Train Loss")
-            axes[0, 0].plot(val_losses, label="Val Loss")
-            axes[0, 0].set_xlabel("Epoch")
-            axes[0, 0].set_ylabel("Loss")
-            axes[0, 0].set_title("Training and Validation Loss")
-            axes[0, 0].legend()
-
-            # Confusion matrix (top-right)
-            disp = ConfusionMatrixDisplay(confusion_matrix=cm)
-            disp.plot(ax=axes[0, 1], colorbar=False)
-            axes[0, 1].set_title("Confusion Matrix")
-
-            # ROC curves (bottom-left)
-            for i in range(NUM_CLASSES):
-                if all_labels_bin[:, i].sum() == 0:
-                    continue
-                fpr, tpr, _ = roc_curve(all_labels_bin[:, i], all_probs[:, i])
-                roc_auc = auc(fpr, tpr)
-                axes[1, 0].plot(fpr, tpr, label=f"Class {i} (AUC = {roc_auc:.2f})")
-            axes[1, 0].plot([0, 1], [0, 1], "k--", label="Random")
-            axes[1, 0].set_xlabel("False Positive Rate")
-            axes[1, 0].set_ylabel("True Positive Rate")
-            axes[1, 0].set_title("ROC Curves")
-            axes[1, 0].legend()
-
-            # Classification report (bottom-right)
-            axes[1, 1].axis("off")
-            axes[1, 1].text(
-                0.5,
-                0.5,  # x and y coordinates set to exactly 50% (the middle)
-                cr,
-                fontsize=12,  # Bumped up for readability
-                family="monospace",
-                ha="center",  # Centers the text block horizontally
-                va="center",  # Centers the text block vertically
-            )
-            axes[1, 1].set_title("Classification Report")
-
-            plt.tight_layout()
-            plt.savefig(os.path.join(path_with_kfold, "results.png"), dpi=150)
-            plt.close()
 
 
 @app.command()
