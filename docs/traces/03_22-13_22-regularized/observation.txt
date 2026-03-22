@@ -1,0 +1,13 @@
+Re-running with the same parameters from last run.
+This is a sanity check to confirm train loss being higher than val loss is not a fluke.
+(Terminated early because no difference apparent in Fold 3)
+
+Hypotheses:
+- Misunderstanding in previous assumption.
+- Increasing batch size does not counteract the decrease in train set size due to reducing number of folds.
+- Batch size does not affect the total amount of data seen by the model (1 epoch = 1 pass through entire dataset still).
+- Increased batch size makes it easier for model to memorize noise in the training set.
+
+Try:
+- Reducing batch size back to original.
+- Increasing regularization strength.

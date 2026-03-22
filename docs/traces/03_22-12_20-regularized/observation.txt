@@ -1,0 +1,13 @@
+Previous assumption invalidated:
+- Train loss still < Val loss.
+- This can no longer be blamed on the "Healthy" class missing due to stratification.
+
+Potential Explanations:
+- Dropout during training only
+- Data augmentation during training only
+
+New theories:
+- Even with WeightedRandomSampler, classes are still imbalanced?
+- This is reflected in the recall scores
+- Weird? Train loss is more likely to be higher than Val loss compared to the previous run.
+- Could this be due to num folds (-f) and increased batch size?

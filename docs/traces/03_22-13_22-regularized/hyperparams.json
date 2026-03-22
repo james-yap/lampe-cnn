@@ -1,0 +1,14 @@
+{
+  "architecture": "regularized",
+  "matpath": "lampe_dataset/Full images/",
+  "num_epochs": 60,
+  "n_folds": 4,
+  "batch_size": 64,
+  "learning_rate": 0.0001,
+  "early_stopping_patience": 10,
+  "sliding_factor": 5,
+  "weight_decay": 0.0001,
+  "head_only_epochs": 50,
+  "lr_scheduler": "ReduceLROnPlateau",
+  "num_patches_per_fov": 25
+}

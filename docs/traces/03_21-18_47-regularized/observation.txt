@@ -1,0 +1,1 @@
+Folds 2 and 6 showed strong evidence of immediate overfitting when ResNet freezing is removed (at epoch 3).

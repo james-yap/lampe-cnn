@@ -1,0 +1,14 @@
+Still shows strong evidence of immediate overfitting when freezing is removed.
+
+Also shows intense jagginess in the validation loss curve.
+- Batch size too small?
+- Learning rate too high?
+- Validation set too small?
+
+Some invalid runs (train loss > val loss).
+Suspicion: Due to stratification of underrepresented "Healthy" class. (may not exist in one of train/val)
+Trying next: Reduce number of folds. Results in a smaller train set, and larger validation set.
+             But will mean that "Healthy" always exists in all folds.
+
+Also trying: Increase batch size to compensate for smaller train set. Will also reduce jagginess in the loss curve.
+Also trying: Further increase number of frozen epochs to keep on pushing the limits.

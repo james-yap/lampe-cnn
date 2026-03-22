@@ -1,0 +1,7 @@
+Nothing apparent seemed to have changed from the previous run.
+
+The middle classes (1 and 2) looks like they have the highest recall.
+The model prefers to predict class 1 and 2, could this be due to class imbalance in the dataset?
+
+Next step would be to investigate the class distribution.
+Check the WeightedRandomSampler implementation.
