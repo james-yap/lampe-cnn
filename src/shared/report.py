@@ -35,21 +35,32 @@ class FoldReporter:
         val_losses: list[float],
         all_preds: torch.Tensor,
         all_labels: torch.Tensor,
+        train_preds: torch.Tensor | None = None,
+        train_labels: torch.Tensor | None = None,
         is_ordinal: bool = False,
     ) -> None:
         """
-        Decode raw model outputs, compute evaluation metrics, render a 2x2
+        Decode raw model outputs, compute evaluation metrics, render a 2x3
         results figure, and save it to {output_dir}/results.png.
+
+        Layout:
+          [loss curve]  [train confusion matrix]  [val confusion matrix]
+          [ROC curves]  [classification report (spans 2 columns)        ]
 
         Args:
             fold: 1-based fold number, used only for the figure title.
             output_dir: Directory in which to write results.png.
             train_losses: Per-epoch training loss values.
             val_losses: Per-epoch validation loss values.
-            all_preds: Concatenated raw model outputs.
+            all_preds: Concatenated raw val model outputs.
                        Shape (N, num_classes) for standard architectures, or
                        (N, K-1) for ordinal architectures.
-            all_labels: Concatenated integer class labels, shape (N,).
+            all_labels: Concatenated integer val class labels, shape (N,).
+            train_preds: Concatenated raw train model outputs from the last
+                         epoch, same shape convention as all_preds. If None,
+                         the train CM panel is left blank.
+            train_labels: Concatenated integer train class labels from the
+                          last epoch, shape (N,). If None, train CM is blank.
             is_ordinal: If True, uses the ordinal decode + cumulative-sigmoid
                         probability path. If False, uses argmax + softmax.
         """
@@ -69,16 +80,12 @@ class FoldReporter:
 
         all_labels_np: np.ndarray = all_labels.numpy()
 
-        # --- Decode predictions and reconstruct per-class probabilities ---
+        # --- Decode val predictions and reconstruct per-class probabilities ---
         pred_classes_np: np.ndarray
         all_probs: np.ndarray
 
         if is_ordinal:
             pred_classes_np = decode_ordinal(all_preds).numpy()
-            # Cumulative sigmoid probability reconstruction:
-            #   P(class=0)   = 1 - σ(logit_0)
-            #   P(class=k)   = σ(logit_{k-1}) - σ(logit_k)  for 0 < k < K-1
-            #   P(class=K-1) = σ(logit_{K-2})
             sigm: np.ndarray = torch.sigmoid(all_preds).numpy()
             all_probs = np.concatenate(
                 [
@@ -93,8 +100,16 @@ class FoldReporter:
             pred_classes_np = all_preds.argmax(dim=1).numpy()
             all_probs = torch.softmax(all_preds, dim=1).numpy()
 
-        # --- Sklearn metrics ---
-        cm = confusion_matrix(
+        # --- Decode train predictions (for train CM) ---
+        train_pred_classes_np: np.ndarray | None = None
+        if train_preds is not None and train_labels is not None:
+            if is_ordinal:
+                train_pred_classes_np = decode_ordinal(train_preds).numpy()
+            else:
+                train_pred_classes_np = train_preds.argmax(dim=1).numpy()
+
+        # --- Val sklearn metrics ---
+        cm_val = confusion_matrix(
             all_labels_np,
             pred_classes_np,
             labels=list(range(self.num_classes)),
@@ -116,39 +131,60 @@ class FoldReporter:
             "label binarization and probability reconstruction, respectively."
         )
 
-        # --- 2x2 matplotlib figure ---
-        fig, axes = plt.subplots(2, 2, figsize=(14, 11))
+        # --- 2x3 mosaic figure ---
+        # Row 0: loss curve | train CM | val CM
+        # Row 1: ROC curves | classification report (spans 2 columns)
+        fig, axes = plt.subplot_mosaic(
+            [["loss", "train_cm", "val_cm"], ["roc", "report", "report"]],
+            figsize=(21, 11),
+        )
         fig.suptitle(f"Fold {fold} Evaluation", fontsize=14)
 
-        # Loss curves (top-left)
-        axes[0, 0].plot(train_losses, label="Train Loss")
-        axes[0, 0].plot(val_losses, label="Val Loss")
-        axes[0, 0].set_xlabel("Epoch")
-        axes[0, 0].set_ylabel("Loss")
-        axes[0, 0].set_title("Training and Validation Loss")
-        axes[0, 0].legend()
+        # Loss curves
+        axes["loss"].plot(train_losses, label="Train Loss")
+        axes["loss"].plot(val_losses, label="Val Loss")
+        axes["loss"].set_xlabel("Epoch")
+        axes["loss"].set_ylabel("Loss")
+        axes["loss"].set_title("Training and Validation Loss")
+        axes["loss"].legend()
 
-        # Confusion matrix (top-right)
-        disp = ConfusionMatrixDisplay(confusion_matrix=cm)
-        disp.plot(ax=axes[0, 1], colorbar=False)
-        axes[0, 1].set_title("Confusion Matrix")
+        # Train confusion matrix
+        if train_pred_classes_np is not None and train_labels is not None:
+            cm_train = confusion_matrix(
+                train_labels.numpy(),
+                train_pred_classes_np,
+                labels=list(range(self.num_classes)),
+            )
+            ConfusionMatrixDisplay(confusion_matrix=cm_train).plot(
+                ax=axes["train_cm"], colorbar=False
+            )
+            axes["train_cm"].set_title("Train Confusion Matrix")
+        else:
+            axes["train_cm"].axis("off")
+            axes["train_cm"].set_title("Train Confusion Matrix (unavailable)")
 
-        # ROC curves (bottom-left)
+        # Val confusion matrix
+        ConfusionMatrixDisplay(confusion_matrix=cm_val).plot(
+            ax=axes["val_cm"], colorbar=False
+        )
+        axes["val_cm"].set_title("Val Confusion Matrix")
+
+        # ROC curves
         for i in range(self.num_classes):
             if all_labels_bin[:, i].sum() == 0:
                 continue
             fpr, tpr, _ = roc_curve(all_labels_bin[:, i], all_probs[:, i])
             roc_auc = auc(fpr, tpr)
-            axes[1, 0].plot(fpr, tpr, label=f"Class {i} (AUC = {roc_auc:.2f})")
-        axes[1, 0].plot([0, 1], [0, 1], "k--", label="Random")
-        axes[1, 0].set_xlabel("False Positive Rate")
-        axes[1, 0].set_ylabel("True Positive Rate")
-        axes[1, 0].set_title("ROC Curves")
-        axes[1, 0].legend()
+            axes["roc"].plot(fpr, tpr, label=f"Class {i} (AUC = {roc_auc:.2f})")
+        axes["roc"].plot([0, 1], [0, 1], "k--", label="Random")
+        axes["roc"].set_xlabel("False Positive Rate")
+        axes["roc"].set_ylabel("True Positive Rate")
+        axes["roc"].set_title("ROC Curves (Val)")
+        axes["roc"].legend()
 
-        # Classification report text (bottom-right)
-        axes[1, 1].axis("off")
-        axes[1, 1].text(
+        # Classification report text
+        axes["report"].axis("off")
+        axes["report"].text(
             0.5,
             0.5,
             cr,
@@ -157,7 +193,7 @@ class FoldReporter:
             ha="center",
             va="center",
         )
-        axes[1, 1].set_title("Classification Report")
+        axes["report"].set_title("Classification Report (Val)")
 
         plt.tight_layout()
         plt.savefig(os.path.join(output_dir, "results.png"), dpi=150)

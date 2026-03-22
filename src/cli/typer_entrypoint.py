@@ -278,6 +278,8 @@ def train(
 
         train_losses, val_losses = [], []
         all_preds, all_labels, debug_stratification = [], [], {}
+        train_preds_last: list[torch.Tensor] = []
+        train_labels_last: list[torch.Tensor] = []
 
         seen_in_training = set()  # used for data leakage detection
 
@@ -288,9 +290,10 @@ def train(
             # train
             model.train()
             running_loss = 0.0
+            train_preds_last, train_labels_last = [], []
             for batch in train_loader:
                 if architecture in (Architecture.ORDINAL, Architecture.REGULARIZED):
-                    patches, ordinal_targets, _int_class_labels, _patient_ids = batch
+                    patches, ordinal_targets, int_class_labels, _patient_ids = batch
                     patches = patches.to(device)
                     targets = ordinal_targets.to(device)  # (batch, K-1) float
                 else:
@@ -303,6 +306,9 @@ def train(
                 loss.backward()
                 engine.optimizer.step()
                 running_loss += loss.item() * patches.size(0)
+                # collect for train confusion matrix (last epoch's data used at report time)
+                train_preds_last.append(outputs.detach().cpu())
+                train_labels_last.append(int_class_labels.cpu())
                 for pid in _patient_ids:
                     seen_in_training.add(pid)
             epoch_train_loss = running_loss / len(train_subset)
@@ -379,9 +385,10 @@ def train(
                 val_losses=val_losses,
                 all_preds=torch.cat(all_preds),
                 all_labels=torch.cat(all_labels),
-                is_ordinal=architecture in (
-                    Architecture.ORDINAL, Architecture.REGULARIZED
-                ),
+                train_preds=torch.cat(train_preds_last) if train_preds_last else None,
+                train_labels=torch.cat(train_labels_last) if train_labels_last else None,
+                is_ordinal=architecture
+                in (Architecture.ORDINAL, Architecture.REGULARIZED),
             )
 
 
