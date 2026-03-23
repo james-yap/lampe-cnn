@@ -502,6 +502,37 @@ def train(
 
 
 @app.command()
+def dataset_info(matpath: str) -> None:
+    """
+    Print a dataset summary: total FOV count, image dimensions, and per-class
+    FOV counts, global index ranges, and patient IDs.
+    """
+    from cli.dataset_info import run
+
+    run(matpath)
+
+
+@app.command()
+def infer(
+    artifact_dir: str,
+    matpath: str,
+    fov_index: int = typer.Option(
+        ..., "--fov", "-F", help="FOV index to run inference on"
+    ),
+) -> None:
+    """
+    Run MIL inference on a single FOV and save a 5-panel attention heatmap
+    visualisation to {artifact_dir}/inference_fov{N}.png.
+
+    Requires model weights saved during training (lampe-cli train ... -s).
+    The hyperparams.json in the parent of artifact_dir is read automatically.
+    """
+    from cli.infer import run
+
+    run(artifact_dir, matpath, fov_index)
+
+
+@app.command()
 def healthcheck():
     """
     Simple health check command to verify that the CLI is working.

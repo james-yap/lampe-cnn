@@ -138,7 +138,7 @@ Helper methods: `get_dims()`, `get_num_fovs()`, `get_num_channels()`, `get_heigh
 
 Simple stateful early stopping. Tracks `best_loss`. A new loss must improve by at least `delta=0.001` to reset the counter. After `patience` epochs without sufficient improvement, sets `early_stop = True`.
 
-### `FoldReporter` (`shared/report.py`) *(planned — see `plan_refactor_utils.md`)*
+### `FoldReporter` (`shared/report.py`)
 
 Stateless helper that owns all per-fold evaluation, reporting, and visualisation logic. Accepts raw model output tensors and produces the standard `results.png` artifact. Hides all `matplotlib` and `sklearn.metrics` imports inside its `save()` method to preserve the lazy-import / fast CLI startup property.
 
@@ -152,13 +152,15 @@ class FoldReporter:
         output_dir: str,
         train_losses: list[float],
         val_losses: list[float],
-        all_preds: torch.Tensor,   # (N, num_classes) or (N, K-1)
-        all_labels: torch.Tensor,  # (N,) integer class labels
+        all_preds: torch.Tensor,         # (N, num_classes) or (N, K-1)
+        all_labels: torch.Tensor,        # (N,) integer class labels
+        train_preds: torch.Tensor | None = None,   # last-epoch train outputs
+        train_labels: torch.Tensor | None = None,  # last-epoch train labels
         is_ordinal: bool = False,
     ) -> None
 ```
 
-The `is_ordinal` flag selects between two decode paths: cumulative sigmoid + ordinal decode vs. argmax + softmax. All plot rendering (2×2 grid: loss curve, confusion matrix, ROC curves, classification report text) and file I/O are encapsulated inside `save()`.
+The `is_ordinal` flag selects between two decode paths: cumulative sigmoid + ordinal decode vs. argmax + softmax. All plot rendering (2×3 mosaic: loss curve, train confusion matrix, val confusion matrix, ROC curves, classification report text) and file I/O are encapsulated inside `save()`.
 
 ### `OptimizerEngine` (`shared/optimizer_engine.py`)
 
@@ -346,20 +348,40 @@ Full training pipeline with cross-validation.
 
 | Option | Short | Default | Description |
 |---|---|---|---|
-| `--num-epochs` | `-e` | 20 | Max epochs per fold |
-| `--n-folds` | `-f` | 6 | Number of CV folds |
+| `--num-epochs` | `-e` | 60 | Max epochs per fold |
+| `--n-folds` | `-f` | 4 | Number of CV folds |
 | `--batch-size` | `-b` | 32 | DataLoader batch size |
 | `--lr` | `-l` | 1e-4 | Adam learning rate |
-| `--patience` | `-p` | 5 | Early stopping patience |
+| `--patience` | `-p` | 10 | Early stopping patience |
 | `--save-weights` | `-s` | False | Save model state dict |
-| `--weight-decay` | `-w` | 1e-4 | L2 weight decay (REGULARIZED only) |
-| `--head-only-epochs` | `-H` | 3 | Head-only training epochs before layer4 unfreezes (REGULARIZED only) |
+| `--weight-decay` | `-w` | 1e-4 | L2 weight decay (regularized/continuous_aug/mil) |
+| `--head-only-epochs` | `-H` | 50 | Head-only training epochs before layer4 unfreezes (regularized/continuous_aug/mil) |
 
 **Architecture enum**: `sliding_window`, `standardized`, `class_balanced`, `ordinal`, `regularized`, `continuous_aug`, or `mil`.
 
+#### `dataset-info <matpath>`
+
+Prints a compact dataset summary with no model required:
+- Total FOV count, image spatial dimensions, channel count
+- Per-class table: FOV count, global index range, patient IDs (first 5 + total)
+
+Useful for picking a valid `--fov` index before running `infer`.
+
+#### `infer <artifact_dir> <matpath> --fov <N>`
+
+Runs MIL inference on a single FOV and produces a 5-panel attention heatmap figure.
+
+| Argument / Option | Description |
+|---|---|
+| `artifact_dir` | Fold artifact directory (e.g. `artifacts/03_22-17_05-mil/fold-2`). Must contain `model_weights.pth`. |
+| `matpath` | Path to the `Full images/` directory (same as `train`). |
+| `--fov` / `-F` | Required. Integer index of the FOV to run inference on. |
+
+Prints the same dataset summary as `dataset-info`, then runs the model and saves `{artifact_dir}/inference_fov{N}.png` at 300 dpi. Raises a clear `FileNotFoundError` if weights are missing ("Run training with `-s` to save weights"). Only supports MIL artifacts; raises `ValueError` for any other architecture.
+
 #### `healthcheck`
 
-Prints a status message. No-ops for verifying CLI installation.
+Prints a status message. Used for verifying CLI installation.
 
 ### Training Loop Detail
 
@@ -369,22 +391,44 @@ Prints a status message. No-ops for verifying CLI installation.
 4. `StratifiedGroupKFold(n_splits=n_folds, shuffle=True, random_state=42)` splits indices, stratified by `class_labels`, grouped by `patient_ids`.
 5. Per fold:
    - Dataset and model instantiated fresh per architecture branch.
-   - `OptimizerEngine.for_architecture(...)` constructs the criterion, optimizer, and optional scheduler in one call *(pending refactor — currently inline)*.
+   - `OptimizerEngine.for_architecture(...)` constructs the criterion, optimizer, and optional scheduler in one call.
    - `WeightedRandomSampler` applied to training DataLoader for `CLASS_BALANCED`, `ORDINAL`, `REGULARIZED`, `CONTINUOUS_AUG`, and `MIL` (at the FOV level for MIL).
    - Per epoch:
-     - `engine.maybe_transition_phase(epoch)` fires phase-2 layer4 unfreezing at `head_only_epochs` *(pending refactor)*.
+     - `engine.maybe_transition_phase(epoch)` fires phase-2 layer4 unfreezing at `head_only_epochs`.
      - Training inner loop has three branches: MIL (3-tuple batch, `(bags, int_class_labels, _patient_ids)`, model returns `(logits, attn)` tuple that is unpacked before the loss call); ordinal/regularized/continuous_aug (4-tuple batch, `BCEWithLogitsLoss`); all other architectures (3-tuple batch, `CrossEntropyLoss`). The val loop mirrors this structure; `_attn` is discarded.
      - Standard forward/backward/step training, then validation with `torch.no_grad()`.
      - **Runtime data leakage assertion**: during validation, each patient ID is checked against `seen_in_training`.
      - **Stratification debug**: tracks `{patient_id → label}` mappings and warns (in verbose mode) on inconsistencies.
      - Early stopping and `engine.step_scheduler(val_loss)` called after each epoch.
-6. Per fold artifacts saved to `artifacts/.../fold-{n}/` via `FoldReporter.save(...)` *(pending refactor — currently inline)*:
-   - `results.png`: 2×2 grid — loss curves, confusion matrix, per-class ROC/AUC, classification report text.
+6. Per fold artifacts saved to `artifacts/.../fold-{n}/` via `FoldReporter.save(...)`:
+   - `results.png`: 2×3 mosaic — loss curves, train confusion matrix, val confusion matrix, ROC curves, classification report text.
    - `model_weights.pth` (only if `--save-weights`).
+
+### Inference Pipeline Detail (`infer` command)
+
+1. Reads `hyperparams.json` from the parent directory of `artifact_dir` to recover `sliding_factor` and `architecture`. Raises if architecture is not `"mil"`.
+2. Loads `MatReader` and prints the same dataset summary as `dataset-info`.
+3. Validates `--fov` is in range; prints the true class and patient ID.
+4. Loads `model_weights.pth` into an `AttentionMIL` model via `torch.load(..., weights_only=True)`.
+5. Constructs `MILDataset(train=False)` for the single FOV (fixed stride grid, no augmentation).
+6. Calls `model(bag.unsqueeze(0))` with `torch.no_grad()`, squeezes `logits (num_classes,)` and `attn (N_patches,)`.
+7. **Attention heatmap construction**:
+   - Reshapes `attn (N_patches,)` → `(factor, factor)` in row-major order (same order as `top_left_coords`).
+   - Bilinear-upsamples to `(H, W)` via `scipy.ndimage.zoom(order=1)`.
+   - Applies `matplotlib.cm.hot` colormap → `(H, W, 3)` RGB in `[0, 1]`.
+   - Blends: `overlay = composite_rgb * 0.55 + heatmap_rgb * 0.45`.
+8. **5-panel 1×5 figure** at 25×5 inches:
+   - Panel 1: SRS1 — Lipids (channel 0, 1450 cm⁻¹), grayscale, min-max normalised
+   - Panel 2: SRS2 — Proteins (channel 1, 1668 cm⁻¹), grayscale, min-max normalised
+   - Panel 3: SHG — Collagen (channel 2), grayscale, min-max normalised
+   - Panel 4: Composite pseudo-RGB (R=SRS1, G=SRS2, B=SHG, each channel independently min-max normalised)
+   - Panel 5: Attention overlay (composite + hot-colormap heatmap at 45% opacity) with colorbar showing raw attention weight scale
+9. Suptitle: `FOV N | True: {class} ({idx}) | Predicted: {class} ({idx}) | Confidence: {prob:.1%}`
+10. Saves to `{artifact_dir}/inference_fov{N}.png` at 300 dpi.
 
 ### Lazy Import Strategy
 
-All heavy imports (`torch`, `sklearn`, `matplotlib`, etc.) are inside the `train()` function body. This ensures that `lampe-cli --help` responds instantly without loading the full ML stack. Ruff linting rule `PLC0415` ("imports outside top-level") is suppressed in `pyproject.toml` to allow this pattern.
+All heavy imports (`torch`, `sklearn`, `matplotlib`, `scipy`, etc.) are inside the command function bodies. This ensures that `lampe-cli --help` responds instantly without loading the full ML stack. Ruff linting rule `PLC0415` ("imports outside top-level") is suppressed in `pyproject.toml` to allow this pattern.
 
 ---
 

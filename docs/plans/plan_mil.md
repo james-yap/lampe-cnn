@@ -376,13 +376,13 @@ where `Confidence` is `softmax(logits)[pred_idx]`.
 
 ### Todo List: Inference
 
-- [ ] **I.1** Add `dataset_info` command to `typer_entrypoint.py`:
+- [x] **I.1** Add `dataset_info` command to `typer_entrypoint.py`:
   - `lampe-cli dataset-info <matpath>`
   - Loads `MatReader(matpath)`, prints total FOVs, image dimensions, channel count,
     and a per-class table of FOV count, index range, and patient IDs
   - No model or architecture needed
 
-- [ ] **I.2** Add `infer` command to `typer_entrypoint.py`:
+- [x] **I.2** Add `infer` command to `typer_entrypoint.py`:
   - Signature: `artifact_dir: str`, `matpath: str`, `fov_index: int = typer.Option(..., "--fov", "-F")`
   - Loads `hyperparams.json` from `os.path.dirname(artifact_dir)` (parent of fold dir)
     to recover `sliding_factor` and `architecture`; raises clear error if architecture
@@ -398,4 +398,4 @@ where `Confidence` is `softmax(logits)[pred_idx]`.
   - Saves to `{artifact_dir}/inference_fov{fov_index}.png` at 300 dpi
   - Prints path to saved file
 
-- [ ] **I.3** Run `uv run pyright src/` — expect 0 errors after adding both commands
+- [x] **I.3** Run `uv run pyright src/` — expect 0 errors after adding both commands
