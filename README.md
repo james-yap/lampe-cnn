@@ -45,20 +45,11 @@ The `lampe-cli` tool is installed automatically as part of the editable install.
 
 ```bash
 # Train a model
-uv run lampe-cli train <architecture> <matpath>
+uv run lampe-cli train --help
 
-# Example
-uv run lampe-cli train sliding_window "lampe_dataset/Full images"
-
-# Run inference (not implemented yet)
-uv run lampe-cli inference
+# Run inference and generate heatmaps (not implemented yet)
+uv run lampe-cli infer --help
 ```
-
-| Command | Argument | Description |
-|:---|:---|:---|
-| `train` | `architecture` | Architecture name (`sliding_window`, `standardized`, `class_balanced`, `ordinal`) |
-| `train` | `matpath` | Path to the directory containing `.mat` dataset files |
-| `inference` | — | Run inference (in progress) |
 
 ## Directory Structure
 
@@ -88,15 +79,6 @@ uv run lampe-cli inference
 - `playground/`: One-off scripts for data exploration and testing ideas before integrating them into `src/`.
 - `lampe_dataset/`: Place the dataset here. Multimodal stimulated Raman scattering microscopy images (not tracked by Git) used to train the CNN.
 
-## Trial Matrix
-
-| Technique | Accuracy | Notes |
-|:---:|:---:|:---:|
-| Vanilla (use "3x3 bad SHG removed") | ? | Establish baseline |
-| Native ResNet50 resolution (224 x 224) | ? | Combine with sliding window approach on full images |
-| StratifiedGroupKFold | ? | Ensure balanced representation of classes and groups in training/validation splits (intracore bias) |
-| `class_balanced` | ? | Geometric augmentation (hflip, vflip, rot90) + WeightedRandomSampler oversampling on top of `standardized` |
-
 ## Dataset Quirks
 
 - The "names" arrays are formatted as follows: `"1 B1 IDC 2": Slide number, Position on slide, Class, FOV number`
@@ -104,15 +86,3 @@ uv run lampe-cli inference
 - Patient IDs are used to group samples in the `StratifiedGroupKFold` splitting strategy to prevent data leakage and ensure that all samples from a given patient are in the same fold.
 - There are some patient core FOVs found in multiple classes. This means that the FOV contains sub-images of different classes (e.g., LGC and HGC sub-images in the same FOV of the same core).
 - The 4 classes (Bening, LGC, HGC, IDC) are ordinal in nature, meaning they represent increasing severity of prostate cancer. This could be leveraged in the model architecture or loss function (e.g., using ordinal regression techniques instead of treating it as a standard multi-class classification problem).
-
-### Notes
-
-- [ ] Normalization: Per-channel mean/std normalization based on training set statistics (not from ResNet)
-- [ ] Learning rate scheduling: Experiment with schedulers (e.g. StepLR, CosineAnnealingLR) to improve convergence
-- [ ] Accuracy, recall, precision, F1 score (due to class imbalance)
-- [ ] [ROC and AUC](https://developers.google.com/machine-learning/crash-course/classification/roc-and-auc)
-- [ ] perhaps k-folds=5 not suitable for small dataset
-- [ ] Ensemble approach: binary classifier for each class (e.g. IDC vs non-IDC, benign vs non-benign) and combine predictions
-- [ ] Tune learning rate
-- [ ] Fixed Held out Test Set (only revealed at the end). MUST RESPECT GROUP SPLIT
-- [ ] Regularization

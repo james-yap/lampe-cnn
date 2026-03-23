@@ -97,7 +97,8 @@ src/
 │   ├── class_balanced.py      # + class imbalance handling, geometric augmentation
 │   ├── ordinal.py             # + K-1 ordinal label encoding
 │   ├── regularized.py        # + weight decay, phased unfreezing, ReduceLROnPlateau
-│   └── continuous_aug.py     # + continuous rotation/translation, Gaussian noise
+│   ├── continuous_aug.py     # + continuous rotation/translation, Gaussian noise
+│   └── mil.py                # FOV-level attention MIL — addresses HGC collapse
 ├── cli/
 │   └── typer_entrypoint.py    # lampe-cli entry point
 └── shared/
@@ -185,6 +186,7 @@ Current architecture → flag mapping:
 | `ORDINAL` | ✓ | ✗ | ✗ | ✗ |
 | `REGULARIZED` | ✓ | ✓ | ✓ | ✓ |
 | `CONTINUOUS_AUG` | ✓ | ✓ | ✓ | ✓ |
+| `MIL` | ✗ | ✓ | ✓ | ✓ |
 
 ---
 
@@ -294,6 +296,42 @@ Builds on `regularized.py` by replacing the discrete fixed-stride augmentation p
 
 **Re-exports**: `OrdinalDatapoint`, `CLASS_NAMES`, `encode_ordinal`, `decode_ordinal`, and `get_model` are all re-exported from `regularized.py` unchanged.
 
+### 6.7 `mil.py` — Attention-Based Multiple Instance Learning
+
+**Motivation**: Continuous augmentation confirmed the failure mode is architectural, not augmentation-related. The HGC collapse pattern (model predicting class 2 the vast majority of the time regardless of true label) is identical across all four folds of both `regularized` and `continuous_aug`. The root cause is weak supervision: every patch in a Healthy FOV is labeled Healthy, but some 224×224 windows contain tissue features that genuinely resemble early-grade cancer. Training a patch classifier with these noisy inherited labels teaches the model to hedge toward the majority class.
+
+**MIL framing**: Each FOV is treated as a **bag** of patches; the bag label (pathologist-assigned ground truth) is used for training; individual patch labels are never seen by the loss function. This directly addresses the weak-supervision problem and additionally eliminates the ordinal conjunction bias by switching to a standard 4-class `CrossEntropyLoss`.
+
+**`MILDatapoint`** type: `tuple[torch.Tensor, int, str]` — a 3-tuple of *(bag tensor `(N_patches, C, H, W)`, integer class label, patient ID)*. Unlike the ordinal architectures there is no label-vector element, so the CLI batch unpacking is a 3-tuple throughout.
+
+**`MILDataset`**: `Dataset[MILDatapoint]` where `__len__` returns the number of FOVs (not patches), so `WeightedRandomSampler` operates at FOV granularity (one weight per FOV, not per patch). `__getitem__(idx)` extracts all `num_patches_per_fov` patches for the FOV, applies z-score normalisation using train-fold statistics, and in the train split applies per-patch continuous augmentation (random crop, `U(0°, 360°)` rotation, Gaussian noise σ=0.02) independently to each patch in the bag. The validation split uses the fixed stride grid with no augmentation. The class distribution report and `mean`/`std`/`sample_weights` interface are identical to `ContinuousAugDataset` at the FOV level.
+
+**`AttentionMIL`** model (Ilse et al. 2018):
+
+```
+Input: bags (B, N_patches, C, H, W)
+
+Stage 1 — shared backbone:
+    ResNet18 (ImageNet pretrained), fc → Identity
+    All backbone params frozen; layer4 optionally unfrozen at phase 2
+    view(B*N, C, H, W) → backbone → view(B, N, 512)
+
+Stage 2 — attention aggregation:
+    attention_V: Linear(512, 128) + Tanh   → (B, N, 128)
+    attention_W: Linear(128, 1)            → (B, N, 1)
+    softmax(dim=1)                         → (B, N, 1)   # normalised over patches
+    z_bag = (attn * feats).sum(dim=1)      → (B, 512)    # weighted bag descriptor
+
+Stage 3 — classification head:
+    Dropout(0.5) + Linear(512, num_classes) → (B, num_classes)
+```
+
+`forward(bags)` returns `(logits (B, num_classes), attn_out (B, N_patches))`. The attention weights are differentiable — gradients flow through them and into the backbone in phase 2. At inference time they directly encode the per-patch spatial importance for the 5-panel heatmap visualisation.
+
+**`get_model(num_classes=4, freeze_all=False)`**: factory that returns an `AttentionMIL` instance. `freeze_all=True` keeps the entire backbone frozen for head-only phase 1; `OptimizerEngine.maybe_transition_phase()` detects `"layer4" in name` on `model.named_parameters()` and adds `backbone.layer4` as a new optimizer param group at `lr * 0.1` at epoch `head_only_epochs`.
+
+**CLI batch shape**: `(B, N_patches, C, H, W)` — bags stack cleanly since every FOV produces the same `num_patches_per_fov` patches, so no custom `collate_fn` is needed. Typical values: B=4 FOVs, N=25 patches, C=3, H=W=224.
+
 ---
 
 ## 7. CLI (`cli/typer_entrypoint.py`)
@@ -317,7 +355,7 @@ Full training pipeline with cross-validation.
 | `--weight-decay` | `-w` | 1e-4 | L2 weight decay (REGULARIZED only) |
 | `--head-only-epochs` | `-H` | 3 | Head-only training epochs before layer4 unfreezes (REGULARIZED only) |
 
-**Architecture enum**: `sliding_window`, `standardized`, `class_balanced`, `ordinal`, `regularized`, or `continuous_aug`.
+**Architecture enum**: `sliding_window`, `standardized`, `class_balanced`, `ordinal`, `regularized`, `continuous_aug`, or `mil`.
 
 #### `healthcheck`
 
@@ -332,9 +370,10 @@ Prints a status message. No-ops for verifying CLI installation.
 5. Per fold:
    - Dataset and model instantiated fresh per architecture branch.
    - `OptimizerEngine.for_architecture(...)` constructs the criterion, optimizer, and optional scheduler in one call *(pending refactor — currently inline)*.
-   - `WeightedRandomSampler` applied to training DataLoader for `CLASS_BALANCED`, `ORDINAL`, and `REGULARIZED`.
+   - `WeightedRandomSampler` applied to training DataLoader for `CLASS_BALANCED`, `ORDINAL`, `REGULARIZED`, `CONTINUOUS_AUG`, and `MIL` (at the FOV level for MIL).
    - Per epoch:
      - `engine.maybe_transition_phase(epoch)` fires phase-2 layer4 unfreezing at `head_only_epochs` *(pending refactor)*.
+     - Training inner loop has three branches: MIL (3-tuple batch, `(bags, int_class_labels, _patient_ids)`, model returns `(logits, attn)` tuple that is unpacked before the loss call); ordinal/regularized/continuous_aug (4-tuple batch, `BCEWithLogitsLoss`); all other architectures (3-tuple batch, `CrossEntropyLoss`). The val loop mirrors this structure; `_attn` is discarded.
      - Standard forward/backward/step training, then validation with `torch.no_grad()`.
      - **Runtime data leakage assertion**: during validation, each patient ID is checked against `seen_in_training`.
      - **Stratification debug**: tracks `{patient_id → label}` mappings and warns (in verbose mode) on inconsistencies.
