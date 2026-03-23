@@ -22,6 +22,15 @@ Other observations:
 - AUC vs Accuracy: AUC scores for class 0 (Healthy) are great.
 - However, precision/recall is abysmal.
 - Indicates a thresholding problem: rank "Healthy" correctly but too scared to predict it.
+- See Folds 1 and 3
+  
+IMPORTANT NOTE!!!!!!
+- In `ordinal.py` --> `decode_ordinal`: FIXED 0.5 THRESHOLD FOR ALL CLASSES
+- In `report.py` --> `is_ordinal: 1 - sigm, ...`: NAIVELY TAKES SUM TO DETERMINE CLASS
+- In `report.py` --> ROC curve (espeically in Fold 1) tells opposite story as confusion matrix / accuracies
+- ROC curve might be immune to invalid outputs (e.g., [1, 0, 1]) due to calc formula (1 - sigm)
+- Model avoids [0, 0, 0] and [1, 1, 1] and prefers outputs with exactly two "1"s (middle classes)
+- Frank Hall method, lack of monotonicity.
 
 Next steps:
 - Current implementation: Translational augmentation is fixed
