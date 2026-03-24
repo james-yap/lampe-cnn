@@ -1,0 +1,4 @@
+This was the first MIL run.
+
+Training curve with great jagginess.
+Reducing LR from 1e-4 to 1e-5 in the next run

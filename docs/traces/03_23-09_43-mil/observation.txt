@@ -1,0 +1,4 @@
+Jaggy train curve but val curve looks great
+
+Either (1) augmentation too heavy or (2) model not powerful enough
+Perhaps unfreeze after val looks like it has frozen (<-- abandoned this idea).

@@ -1,3 +1,5 @@
+## Monotonicity, Conjunction Bias, and the Superiority of CORAL for Ordinal Regression in SRS/SHG Microscopy
+
 Here is a comprehensive, fully detailed compilation of our diagnostic breakdown. This preserves all the technical nuances, mathematical realities, and architectural comparisons discussed, integrating your specific context of SRS and SHG microscopy and GLCM features.
 
 ---
@@ -41,3 +43,63 @@ By adding these strictly ordered biases to the *exact same* 1D Severity Score, t
 ---
 
 Would you like me to draft the exact PyTorch `CORALHead` module implementation and show you how to seamlessly slot it into your `get_model` function?
+
+## Combining CORAL with MIL
+
+Yes, you can absolutely combine CORAL (Consistent Rank Logits) with Attention MIL, and it is a highly elegant solution to your specific problem. 
+
+This hybrid approach tackles both of your root causes simultaneously: **MIL** handles the weak supervision (noisy patch labels), while **CORAL** handles the ordinal nature of disease progression without the severe conjunction bias of your previous $K-1$ threshold setup.
+
+Here is a breakdown of how this combination works, and why native attention heatmaps are vastly superior to Grad-CAM for this architecture.
+
+---
+
+### How CORAL + Attention MIL Works
+
+You don't have to choose between attention heatmaps and ordinal ranking. The attention mechanism and the classification head operate at different stages of the network.
+
+**1. The Feature Extraction (Backbone):**
+Each of the 25 patches passes through ResNet18, producing 25 independent 512-dimensional vectors.
+
+**2. The Aggregation (Attention MIL):**
+The attention module calculates a weight $a_k$ for each patch. These weights are used to create a weighted sum: the single 512-dimensional **Bag Descriptor** ($h$). 
+* *Crucially, the attention heatmap is generated right here. It simply reflects which patches contributed most to $h$. It does not care what happens in the next step.*
+
+**3. The Classification (CORAL Head):**
+Instead of a standard `Linear(512, 4)` head with Cross-Entropy, you pass the Bag Descriptor $h$ into a CORAL head. CORAL enforces ordinality by using a **single shared weight vector** $W$ but $K-1$ independent bias terms $b_i$ (where $K=4$ classes).
+
+$$\text{logit}_i = W^T h + b_i \quad \text{for } i \in \{1, 2, 3\}$$
+
+Because $W^T h$ is the same for all three logits, the decision boundaries are strictly parallel. The biases $b_i$ act as monotonically decreasing thresholds ($b_1 > b_2 > b_3$). 
+
+**Why this fixes the ordinal collapse:** In your previous patch-level model, the network had to predict `< 0.5` across three entirely independent binary heads to output "Healthy", causing a conjunction bias. CORAL mathematically guarantees that if the model predicts HGC (class 2), it *must* have also confidently crossed the threshold for LGC (class 1). It stabilizes the ordinal transitions.
+
+---
+
+### Grad-CAM vs. Attention MIL
+
+If you use Attention MIL, **you do not want or need Grad-CAM.** Native attention is significantly better for this use case.
+
+Here is a comparison of the two approaches applied to your bag-of-patches data:
+
+| Feature | Native Attention (MIL) | Grad-CAM (Post-hoc) |
+| :--- | :--- | :--- |
+| **Origin** | First-class citizen. The network literally learns these weights to minimize the loss. | Post-hoc heuristic. It estimates importance by routing gradients back to a convolutional layer. |
+| **Resolution** | Patch-level (1 weight per patch). Exactly matches your 25-patch grid. | Sub-patch level (e.g., $7 \times 7$ grid within *each* patch). |
+| **Aggregation** | Solves the FOV-level problem natively. | Requires stitching 25 separate Grad-CAM heatmaps together, which introduces edge artifacts and scaling mismatches between patches. |
+| **CORAL Compatibility** | Perfect. Attention is independent of the loss function. | Messy. You have to decide *which* of the $K-1$ CORAL logits to backpropagate from to generate the heatmap. |
+
+### The Verdict on Grad-CAM
+
+Grad-CAM would only be the right choice if you abandoned MIL entirely, went back to your original patch-level architecture, and wanted to see what the backbone was looking at *inside* a single 224x224 patch. 
+
+However, since your primary goal is to identify *which regions of the FOV* are driving the patient-level diagnosis (e.g., finding the small cluster of LGC cells in an otherwise healthy FOV), Attention MIL is the architecturally correct tool.
+
+### Recommended Path Forward
+
+You can implement this as a staged approach to isolate your improvements:
+
+1.  **Stage 1 (Current Plan):** Finish implementing standard Attention MIL with a 4-class `CrossEntropyLoss`. Verify that the macro F1 improves and the HGC collapse is resolved.
+2.  **Stage 2:** Once the MIL pipeline is stable, swap the classification head from `Linear(512, 4)` to a CORAL head and update the loss function. Your attention heatmaps and inference pipeline will require zero changes to support this swap.
+
+Would you like me to draft the PyTorch implementation of the CORAL layer specifically designed to sit on top of the 512-dim MIL Bag Descriptor?

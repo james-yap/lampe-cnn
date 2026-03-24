@@ -1,0 +1,19 @@
+Weak Supervision: Subimages/Patches may contain different classes within one FOV. May have many empty subimages.
+MIL - tackles weak supervision using attention
+
+Severe Conjunction Bias (K-1 Ordinal)
+CORAL - tackles severe conjunction bias of K-1, strictly parallel decision boundaries.
+see monotonicity.md
+
+COMBINE MIL + CORAL
+
+Oneshot Preprocessing
+_robust_minmax on training (uses percentiles to remove background noise)
+- exclude multiclass FOVs to help against weak supervision (CORAL needs this)
+- CORAL requires strictly parallel decision boundaries, so we need to ensure that the features are on a consistent scale across all samples. This is crucial for the model to learn meaningful thresholds that can effectively separate the classes in an ordinal manner.
+
+BatchNorm stats not frozen during head-only training
+track_running_stats=False
+
+ImageNet trained on Cats, Dogs, Cars
+change to pathological backbone
