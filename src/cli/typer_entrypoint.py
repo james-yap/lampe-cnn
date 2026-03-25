@@ -533,6 +533,23 @@ def infer(
 
 
 @app.command()
+def view(
+    matpath: str,
+    fov_index: int = typer.Option(..., "--fov", "-F", help="FOV index to visualise"),
+    output_dir: str = typer.Option(".", "--output-dir", "-o", help="Directory to save the PNG"),
+) -> None:
+    """
+    Render a 5-panel FOV figure for a single data point without running inference.
+
+    Saves view_fov{N}.png to output_dir (default: current directory).
+    The attention heatmap panel is blank; the title shows only the true label.
+    """
+    from cli.view import run
+
+    run(matpath, fov_index, output_dir)
+
+
+@app.command()
 def healthcheck():
     """
     Simple health check command to verify that the CLI is working.

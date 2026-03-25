@@ -11,6 +11,7 @@ Oneshot Preprocessing
 _robust_minmax on training (uses percentiles to remove background noise)
 - exclude multiclass FOVs to help against weak supervision (CORAL needs this)
 - CORAL requires strictly parallel decision boundaries, so we need to ensure that the features are on a consistent scale across all samples. This is crucial for the model to learn meaningful thresholds that can effectively separate the classes in an ordinal manner.
+- create a viewer just like one for 'infer' utility but on offline processing data
 
 BatchNorm stats not frozen during head-only training
 track_running_stats=False

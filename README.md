@@ -2,6 +2,10 @@
 
 Label-free histological identification of intraductal carcinoma of the prostate using deep learning on multimodal stimulated Raman scattering microscopy (LAMPE Lab @ Carleton University)
 
+![Example Inference Output](docs/traces/03_23-23_22-mil/fold-4/inference_fov150.png)
+
+![Example Training Curves](docs/traces/03_23-23_22-mil/fold-4/results.png)
+
 ## Getting Started
 
 ### Environment
