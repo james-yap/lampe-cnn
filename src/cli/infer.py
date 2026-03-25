@@ -109,8 +109,8 @@ def run(artifact_dir: str, matpath: str, fov_index: int) -> None:
         mil_inf_out: tuple[torch.Tensor, torch.Tensor] = model(bag.unsqueeze(0))  # type: ignore[assignment]
         logits_batch, attn_batch = mil_inf_out
 
-    logits = logits_batch.squeeze(0)   # (num_classes,)
-    attn = attn_batch.squeeze(0)       # (N_patches,)
+    logits = logits_batch.squeeze(0)  # (num_classes,)
+    attn = attn_batch.squeeze(0)  # (N_patches,)
 
     probs_np: np.ndarray = torch.softmax(logits, dim=0).cpu().numpy()
     pred_class = int(logits.argmax().item())
@@ -131,4 +131,3 @@ def run(artifact_dir: str, matpath: str, fov_index: int) -> None:
         confidence=confidence,
     )
     print(f"Saved: {output_path}")
-

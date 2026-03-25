@@ -70,8 +70,8 @@ def render_fov_figure(
 
     # --- Channel normalisation + gamma ---
     gamma = 1.5
-    ch0: np.ndarray = robust_minmax(raw_fov[0]) ** gamma          # Lipids
-    ch1: np.ndarray = robust_minmax(raw_fov[1]) ** gamma          # Proteins
+    ch0: np.ndarray = robust_minmax(raw_fov[0]) ** gamma  # Lipids
+    ch1: np.ndarray = robust_minmax(raw_fov[1]) ** gamma  # Proteins
     ch2: np.ndarray = robust_minmax(raw_fov[2], p_max=99.9) ** 1.2  # Collagen
 
     # R=Proteins, G=Lipids, B=Collagen

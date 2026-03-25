@@ -536,7 +536,9 @@ def infer(
 def view(
     matpath: str,
     fov_index: int = typer.Option(..., "--fov", "-F", help="FOV index to visualise"),
-    output_dir: str = typer.Option(".", "--output-dir", "-o", help="Directory to save the PNG"),
+    output_dir: str = typer.Option(
+        ".", "--output-dir", "-o", help="Directory to save the PNG"
+    ),
 ) -> None:
     """
     Render a 5-panel FOV figure for a single data point without running inference.
