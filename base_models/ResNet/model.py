@@ -11,7 +11,8 @@ def ResNet18(num_classes=4):
     # changing the final layer
     model.fc = nn.Linear(in_features=512, out_features=num_classes)
 
-    # freezing every layer, except the last 2 blocks
+    # freezing every layer/features, except the last fully connected layer 
+    # and the last block (layer4) to allow some fine-tuning
     for name, param in model.named_parameters():
         if "layer4" in name or "fc" in name:
             param.requires_grad = True   # fine-tune these

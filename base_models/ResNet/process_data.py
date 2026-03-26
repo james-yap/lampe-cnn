@@ -9,7 +9,7 @@ from torch.utils.data import random_split
 
 
 file_path = ""
-file_path = "C:/Users/DELL/OneDrive/Desktop/GitHub/3x3 all images-20260311T225304Z-1-001/3x3 all images"
+
 class ProstateDataset(Dataset):
     def __init__(self, mat_files, class_labels, transform=None):
         self.images = []
@@ -109,7 +109,6 @@ train_subset, val_subset, test_subset = random_split(dataset,[train_size, val_si
 train_dataset = TransformedSubset(train_subset, transform=train_transforms)
 val_dataset = TransformedSubset(val_subset, transform=val_transforms)
 test_dataset = TransformedSubset(test_subset, transform=val_transforms)
-
 
 train_loader = torch.utils.data.DataLoader(train_dataset, batch_size=32, shuffle=True)
 val_loader   = torch.utils.data.DataLoader(val_dataset, batch_size=32, shuffle=False)
