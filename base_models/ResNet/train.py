@@ -5,7 +5,7 @@ import torch.nn as nn
 from model import ResNet18
 from process_data import train_loader, val_loader, test_loader
 
-
+# loading the model and moving it to the appropriate device (GPU if available)
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 model = ResNet18(num_classes=4).to(device)
 
@@ -31,7 +31,7 @@ for epoch in range(num_epochs):
         labels = labels.to(device)
 
         # forward + backward + optimize
-        optimizer.zero_grad()
+        optimizer.zero_grad() 
         outputs = model(images)
         loss = criterion(outputs, labels)
         loss.backward()
@@ -39,12 +39,13 @@ for epoch in range(num_epochs):
         running_loss += loss.item()
 
 
-
+    # validation loop
     model.eval()
     val_loss = 0.0
     correct = 0
     total = 0
 
+    # No computing of gradients during evaluation
     with torch.no_grad():
         for images, labels in val_loader:
             images = images.to(device)
