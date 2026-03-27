@@ -1,82 +1,41 @@
-import os
+import sys
+from pathlib import Path
 import torch
-from torch.utils.data import Dataset, Subset
-import scipy.io as sio
+from torch.utils.data import Dataset
 import numpy as np
 from PIL import Image
 from torchvision import transforms
 from torch.utils.data import random_split
 
 
+sys.path.append(str(Path(__file__).resolve().parent.parent.parent))
+from src.shared.mat_reader import MatReader
+
+
 file_path = ""
-# file_path = "C:/Users/DELL/OneDrive/Desktop/GitHub/Image data-20260326T220833Z-1-001/Image data"
+# file path with all the .mat files and the companion .txt files for patient IDs and patch names.
+file_path = "C:/Users/DELL/OneDrive/Desktop/GitHub/full_images/Full images/"
 
-
-def load_names(mat_file, expected_count):
-    # getting the corresponding names file by replacing the suffix of the mat file
-    names_file = mat_file.replace("_bulk_data.mat", "_names.txt")
-    
-    if not os.path.isfile(names_file):
-        raise FileNotFoundError(
-            f"Names file missing: {names_file}\n"
-        )
-    # Load names and ensure they match the expected count from the MAT file
-    with open(names_file, "r", encoding="utf-8") as f:
-        names = [line.strip() for line in f.readlines() if line.strip()]
-    if len(names) != expected_count:
-        raise ValueError(
-            f"Mismatch: {names_file} has {len(names)} names but MAT file has {expected_count} samples"
-        )
-    
-    return names
-
-
-def _to_group_id(name_value, idx):
-    # Convert name to a group ID by taking the first two tokens (e.g., "Patient_01_Sample_01" -> "Patient_01")
-    tokens = str(name_value).replace(",", " ").split()
-    if len(tokens) >= 2:
-        return f"{tokens[0]}_{tokens[1]}"
-    if len(tokens) == 1:
-        return tokens[0]
-    return f"unknown_{idx}"
-# further changes to ensure correct group ID extraction and handling of edge cases in names
-
+# class to load the dataset with the MatReader and convert it into a PyTorch Dataset
 class ProstateDataset(Dataset):
-    def __init__(self, mat_files, class_labels, transform=None):
-        self.images = []
-        self.labels = []
-        self.patient_ids = []
+    def __init__(self, matpath, transform=None):
         self.transform = transform
 
-        for mat_file, label in zip(mat_files, class_labels):
-            data = sio.loadmat(mat_file)
+        mat_reader = MatReader(matpath)
 
-            # extract modalities
-            shg = data[[k for k in data.keys() if "SHG" in k][0]]
-            srs1450 = data[[k for k in data.keys() if "1450_onres" in k][0]]
-            srs1668 = data[[k for k in data.keys() if "1668_onres" in k][0]]
+        # MatReader returns (n, c, w, h). PIL expects HWC.
+        images_hwc = np.transpose(mat_reader.images, (0, 2, 3, 1))
+        self.images = np.clip(images_hwc, 0, 255).astype(np.uint8)
+        self.labels = mat_reader.class_labels.astype(np.int64)
+        # Patient IDs are used for grouping in StratifiedGroupKFold to prevent data leakage 
+        # between training and validation sets
+        self.patient_ids = mat_reader.patient_ids
 
-            N = shg.shape[2]   # number of patches
-
-            # Load names from companion .txt file
-            names = load_names(mat_file, N)
-
-
-            for i in range(N):
-                img = np.stack([
-                    shg[:, :, i],
-                    srs1450[:, :, i],
-                    srs1668[:, :, i]
-                ], axis=-1)
-
-                img = img.astype(np.uint8)
-                self.images.append(img)
-                self.labels.append(label)
-                self.patient_ids.append(_to_group_id(names[i], i))
-
+    # the length of the dataset is the number of samples (n)
     def __len__(self):
         return len(self.images)
 
+    #  to get an item from the dataset
     def __getitem__(self, idx):
         img = Image.fromarray(self.images[idx])
         label = self.labels[idx]
@@ -104,14 +63,7 @@ class TransformedSubset(Dataset):
 
 
 dataset = ProstateDataset(
-    mat_files=[
-        file_path + "/Healthy_bulk_data.mat",
-        file_path + "/LGC_bulk_data.mat",
-        file_path + "/HGC_bulk_data.mat",
-        file_path + "/IDC_bulk_data.mat"
-    ],
-    class_labels=[0, 1, 2, 3]
-    # healthy - 0, LGC - 1, HGC - 2, TDC - 3
+    matpath=file_path
     # transform=train_transform # Transform will be applied after split
 )
 
@@ -152,6 +104,3 @@ test_dataset = TransformedSubset(test_subset_raw, transform=val_transforms)
 # Creating a DataLoader for the permanent test set
 test_loader = torch.utils.data.DataLoader(test_dataset, batch_size=32, shuffle=False)
 
-print(f"Total samples: {total}")
-print(f"Samples for k-fold cross-validation (train+val): {len(train_val_dataset)}")
-print(f"Samples in permanent test set: {len(test_dataset)}")
