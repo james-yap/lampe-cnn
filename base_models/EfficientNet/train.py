@@ -5,26 +5,22 @@ from torch.utils.data import DataLoader, Subset
 import numpy as np
 
 from model import EfficientNet
-from process_data_k_fold import (
-    TransformedSubset,
-    train_transforms,
-    val_transforms,
-    train_val_dataset,
-    train_val_labels,
-    train_val_groups,
-    test_loader,
-)
+from process_data_k_fold import *
+
+
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
 k_folds = 2
-num_epochs = 10
+num_epochs = 15
 
+# initialising StratifiedGroupKFold with shuffling
 sgkf = StratifiedGroupKFold(n_splits=k_folds, shuffle=True, random_state=42)
 
 # Lists to store results for each fold
 fold_accuracies = []
 best_val_accuracy_overall = 0.0
 best_model_state_dict = None
+# lists to store training and validation losses for the best fold (the highest validation accuracy)
 best_fold_train_losses = []
 best_fold_val_losses = []
 
@@ -32,8 +28,7 @@ print(f"Starting K-Fold Cross Validation with {k_folds} folds...")
 
 X_index = np.arange(len(train_val_dataset))
 for fold, (train_ids, val_ids) in enumerate(sgkf.split(X_index, train_val_labels, groups=train_val_groups)):
-    print(f'\nFOLD {fold+1}/{k_folds}')
-    print('--------------------------------')
+    print(f"\nFOLD {fold+1}/{k_folds}")
 
     # Re-initialize model for each fold
     model = EfficientNet(num_classes=4, unfreeze_blocks=1).to(device)
@@ -91,7 +86,7 @@ for fold, (train_ids, val_ids) in enumerate(sgkf.split(X_index, train_val_labels
         val_accuracy = correct / total
         train_losses_fold.append(running_loss)
         val_losses_fold.append(val_loss)
-        print(f"Epoch {epoch+1}: Train Loss={running_loss:.4f}, Val Loss={val_loss:.4f}, Val Acc={val_accuracy:.4f}")
+        print(f"Epoch {epoch+1}: Train Loss={running_loss}: , Val Loss={val_loss}: , Val Acc={val_accuracy}: ")
 
         # Save the best model for this fold
         if val_accuracy > best_acc_fold:
@@ -105,22 +100,19 @@ for fold, (train_ids, val_ids) in enumerate(sgkf.split(X_index, train_val_labels
 
     fold_accuracies.append(best_acc_fold)
 
-print(f'\nK-FOLD CROSS VALIDATION RESULTS:')
-print(f'--------------------------------')
-for i, acc in enumerate(fold_accuracies):
-    print(f'Fold {i+1} Accuracy: {acc:.4f}')
-print(f'Average Fold Accuracy: {sum(fold_accuracies) / k_folds:.4f}')
-print(f'Best Validation Accuracy Across all Folds: {best_val_accuracy_overall:.4f}')
 
-# Load the overall best model and evaluate on the permanent test set
+print(f"Average Fold Accuracy: {sum(fold_accuracies) / k_folds}: ")
+print(f"Best Validation Accuracy Across all Folds: {best_val_accuracy_overall}: ")
+
+# Loading the overall best model and evaluating on the permanent test set
 if best_model_state_dict:
-    print(f'\nEvaluating the best model on the permanent test set...')
     model = EfficientNet(num_classes=4, unfreeze_blocks=1).to(device)
     model.load_state_dict(torch.load("best_model_overall.pth"))
     model.eval()
 
     correct = 0
     total = 0
+    # with no gradient computing for evaluation
     with torch.no_grad():
         for images, labels in test_loader:
             images = images.to(device)
@@ -132,6 +124,9 @@ if best_model_state_dict:
             correct += (predicted == labels).sum().item()
 
     test_accuracy = correct / total
-    print(f"Permanent Test Set Accuracy with Best K-Fold Model: {test_accuracy:.4f}")
+    print(f"Permanent Test Set Accuracy with Best K-Fold Model: {test_accuracy}: ")
 else:
     print("No best model found. Something went wrong during training.")
+
+
+
