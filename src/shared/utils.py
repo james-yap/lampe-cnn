@@ -2,7 +2,14 @@
 Various utility functions for preprocessing and data normalization.
 """
 
+from collections import Counter
+
 import numpy as np
+
+from architectures.class_balanced import CLASS_NAMES
+from shared import mat_reader
+from shared.mat_reader import MatReader
+import torch
 
 
 def minmax(arr: np.ndarray) -> np.ndarray:
@@ -37,3 +44,21 @@ def robust_minmax(arr: np.ndarray, p_min=5.0, p_max=99.5) -> np.ndarray:
     # Normalize and clip so values stay strictly between 0.0 and 1.0
     normalized = (arr - lo) / (hi - lo)
     return np.clip(normalized, 0.0, 1.0)
+
+
+def report_class_distribution(
+    mat_reader: MatReader, eff_fov_indices: list[int], train: bool
+) -> None:
+    """
+    Prints a class distribution report for the given FOV indices.
+    """
+    class_counts: Counter[int] = Counter(
+        int(mat_reader.class_labels[i]) for i in eff_fov_indices
+    )
+    total_fovs = len(eff_fov_indices)
+    split_label = "train" if train else "val"
+    print(f"  [{split_label}] Class distribution ({total_fovs} FOVs):")
+    for cls_idx, _ in enumerate(CLASS_NAMES):
+        count = class_counts.get(cls_idx, 0)
+        pct = 100.0 * count / total_fovs if total_fovs > 0 else 0.0
+        print(f"    {CLASS_NAMES[cls_idx]:8s}: {count:4d} FOVs ({pct:.1f}%)")
