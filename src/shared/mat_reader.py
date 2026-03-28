@@ -7,6 +7,8 @@ from typing import Any, cast
 import numpy as np
 from scipy.io import loadmat  # type: ignore
 
+from shared.constants import CLASS_NAMES, MODALITIES
+
 
 class MatReader:
     """
@@ -26,15 +28,13 @@ class MatReader:
     patient_ids: np.ndarray
 
     def __init__(self, matpath: str):
-        classes = ["Healthy", "LGC", "HGC", "IDC"]
-        modalities = ["1450_bgsub", "1668_bgsub", "SHG"]
 
         images_list: list[np.ndarray] = []
         labels_list: list[int] = []
         ids_list: list[str] = []
 
         # Verify files exist
-        for classname in classes:
+        for classname in CLASS_NAMES:
             mat_filename = f"{classname}_bulk_data.mat"
             if not os.path.isfile(os.path.join(matpath, mat_filename)):
                 raise FileNotFoundError(
@@ -47,7 +47,7 @@ class MatReader:
                     f"Expected file '{names_filename}' not found in path '{matpath}'"
                 )
 
-        for classname in classes:
+        for classname in CLASS_NAMES:
             mat_filename = f"{classname}_bulk_data.mat"
             names_filename = f"{classname}_names.txt"
 
@@ -63,7 +63,7 @@ class MatReader:
 
                 mode_data_images: list[np.ndarray] = []
 
-                for mode in modalities:
+                for mode in MODALITIES:
                     mode_key = f"{classname}_{mode}"
                     mode_data = np.asarray(cast(np.ndarray, raw_data[mode_key]))
 
@@ -81,13 +81,13 @@ class MatReader:
 
                 multimodal_data = np.stack(
                     mode_data_images, axis=-1
-                )  # (width, height, n samples, n modalities)
+                )  # (height, width, n samples, n modalities) - MATLAB column-major ordering
                 multimodal_data = np.transpose(
                     multimodal_data, (2, 3, 0, 1)
-                )  # (n samples, n modalities, width, height)
+                )  # (n samples, n modalities, height, width)
 
                 images_list.append(multimodal_data)
-                labels_list.extend([classes.index(classname)] * len(names))
+                labels_list.extend([CLASS_NAMES.index(classname)] * len(names))
                 ids_list.extend([f"{name[0]}_{name[1]}" for name in names])
 
         self.images = np.concatenate(images_list, axis=0)

@@ -13,9 +13,6 @@ import typer
 
 app = typer.Typer()
 
-VERBOSE_MODE = False
-NUM_CLASSES = 4
-
 
 class Architecture(str, Enum):
     """
@@ -47,12 +44,15 @@ def train(
         False, "-s", help="Whether to save model weights after training"
     ),
     weight_decay: float = typer.Option(
-        1e-4, "-w", help="L2 weight decay for Adam optimizer (REGULARIZED only)"
+        1e-3, "-w", help="L2 weight decay for Adam optimizer (REGULARIZED only)"
     ),
     head_only_epochs: int = typer.Option(
         50,
         "-H",
         help="Epochs to train head-only before unfreezing layer4 (REGULARIZED only)",
+    ),
+    custom_name: str = typer.Option(
+        "", "-n", help="Additional note to append to artifact folder name"
     ),
 ):
     """
@@ -75,7 +75,7 @@ def train(
         save_weights=save_weights,
         weight_decay=weight_decay,
         head_only_epochs=head_only_epochs,
-        num_classes=NUM_CLASSES,
+        custom_name=custom_name,
     )
 
 

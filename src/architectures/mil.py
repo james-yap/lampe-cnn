@@ -55,11 +55,10 @@ from torch.utils.data import Dataset
 from torchvision import models
 
 from shared.mat_reader import MatReader
+from shared.constants import CLASS_NAMES
 
 # One bag per FOV: (N_patches, C, H, W) tensor, integer class label, patient ID
 MILDatapoint = tuple[torch.Tensor, int, str]
-
-CLASS_NAMES = ["Healthy", "LGC", "HGC", "IDC"]
 
 
 class MILDataset(Dataset[MILDatapoint]):

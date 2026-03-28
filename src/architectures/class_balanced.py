@@ -18,10 +18,9 @@ from torch import nn
 from torchvision import models
 
 from shared.mat_reader import MatReader
+from shared.constants import CLASS_NAMES
 
 Datapoint = tuple[torch.Tensor, int, str]  # (patch tensor, class label, patient id)
-
-CLASS_NAMES = ["Healthy", "LGC", "HGC", "IDC"]
 
 
 class ClassBalancedDataset(Dataset[Datapoint]):

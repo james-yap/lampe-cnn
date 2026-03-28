@@ -16,7 +16,7 @@ def run(
     save_weights: bool,
     weight_decay: float,
     head_only_epochs: int,
-    num_classes: int = 4,
+    custom_name: str,
 ) -> None:
     """
     Train and evaluate the model based on the specified architecture and MAT file path.
@@ -73,7 +73,12 @@ def run(
         "head_only_epochs": head_only_epochs,
         "lr_scheduler": (
             "ReduceLROnPlateau"
-            if architecture in ("regularized", "continuous_aug", "mil")
+            if architecture
+            in (
+                "regularized",
+                "continuous_aug",
+                "mil",
+            )  # TODO: bug: secondary source of truth (OptimizerEngine)
             else "none"
         ),
     }
@@ -81,7 +86,11 @@ def run(
     start_time = datetime.now()
     artifact_folder_path = os.path.join(
         "artifacts",
-        f"{start_time:%m_%d-%H_%M}-{hyperparams['architecture']}",
+        (
+            f"{start_time:%m_%d-%H_%M}-{hyperparams['architecture']}-{custom_name}"
+            if custom_name
+            else f"{start_time:%m_%d-%H_%M}-{hyperparams['architecture']}"
+        ),
     )
     os.makedirs(artifact_folder_path, exist_ok=True)
 
@@ -121,6 +130,8 @@ def run(
         mat_reader.class_labels,
         mat_reader.patient_ids,
     )
+
+    num_classes = len(CLASS_NAMES)
 
     reporter = FoldReporter(
         num_classes=num_classes,

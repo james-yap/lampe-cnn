@@ -22,11 +22,10 @@ from torch import nn
 from torchvision import models
 
 from shared.mat_reader import MatReader
+from shared.constants import CLASS_NAMES
 
 # (patch tensor, ordinal label vector, original class index, patient id)
 OrdinalDatapoint = tuple[torch.Tensor, torch.Tensor, int, str]
-
-CLASS_NAMES = ["Healthy", "LGC", "HGC", "IDC"]
 
 
 def encode_ordinal(label: int, num_classes: int = 4) -> torch.Tensor:

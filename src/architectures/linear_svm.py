@@ -88,7 +88,11 @@ class LinearSVM(nn.Module):
         resnet_model = models.resnet18(weights=weights)
 
         num_features = resnet_model.fc.in_features
-        resnet_model.fc = nn.Linear(num_features, num_classes)  # TODO: consider dropout
+        # resnet_model.fc = nn.Linear(num_features, num_classes)  # TODO: consider dropout
+        resnet_model.fc = nn.Sequential(  # type: ignore[assignment]
+            nn.Linear(num_features, num_classes),
+            nn.Dropout(p=0.5),
+        )
 
         for param in resnet_model.parameters():
             param.requires_grad = False

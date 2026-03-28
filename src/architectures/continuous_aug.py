@@ -45,12 +45,12 @@ from torch.utils.data import Dataset
 from torch import nn  # noqa: F401 — re-exported via regularized
 
 from shared.mat_reader import MatReader
+from shared.constants import CLASS_NAMES
 
 # Re-export all public symbols from regularized so the CLI can use a single
 # import surface regardless of which architecture it chooses.
 from architectures.regularized import (  # noqa: F401
     OrdinalDatapoint,
-    CLASS_NAMES,
     encode_ordinal,
     decode_ordinal,
     get_model,

@@ -123,6 +123,10 @@ class FoldReporter:
         all_labels_bin: np.ndarray = label_binarize(
             all_labels_np, classes=list(range(self.num_classes))
         )
+        # sklearn returns (N, 1) for binary problems; expand to (N, 2) to keep
+        # the ROC loop uniform across binary and multiclass cases.
+        if self.num_classes == 2:
+            all_labels_bin = np.hstack([1 - all_labels_bin, all_labels_bin])
 
         assert isinstance(all_labels_bin, np.ndarray) and isinstance(
             all_probs, np.ndarray

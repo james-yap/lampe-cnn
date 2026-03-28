@@ -7,6 +7,8 @@ The attention panel is left blank and only the true label appears in the title.
 All heavy imports are inside run() to preserve CLI lazy-startup behaviour.
 """
 
+from shared.constants import CLASS_NAMES
+
 
 def run(matpath: str, fov_index: int, output_dir: str = ".") -> None:
     """
@@ -34,12 +36,11 @@ def run(matpath: str, fov_index: int, output_dir: str = ".") -> None:
     if not (0 <= fov_index < num_fovs):
         raise ValueError(f"--fov {fov_index} is out of range [0, {num_fovs - 1}]")
 
-    class_names = ["Healthy", "LGC", "HGC", "IDC"]
     true_class = int(mat_reader.class_labels[fov_index])
     patient_id = str(mat_reader.patient_ids[fov_index])
     print(
         f"\nViewing FOV {fov_index}  "
-        f"(class: {class_names[true_class]}, patient: {patient_id})"
+        f"(class: {CLASS_NAMES[true_class]}, patient: {patient_id})"
     )
 
     os.makedirs(output_dir, exist_ok=True)
@@ -49,7 +50,7 @@ def run(matpath: str, fov_index: int, output_dir: str = ".") -> None:
         raw_fov=mat_reader.images[fov_index].astype(np.float32),
         fov_index=fov_index,
         true_class=true_class,
-        class_names=class_names,
+        class_names=CLASS_NAMES,
         output_path=output_path,
         attn_np=None,
     )

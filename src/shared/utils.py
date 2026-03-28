@@ -7,9 +7,7 @@ from collections import Counter
 import numpy as np
 
 from architectures.class_balanced import CLASS_NAMES
-from shared import mat_reader
 from shared.mat_reader import MatReader
-import torch
 
 
 def minmax(arr: np.ndarray) -> np.ndarray:
