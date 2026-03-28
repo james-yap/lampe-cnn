@@ -1,3 +1,10 @@
+"""
+This module contains the main training loop for the project.
+"""
+
+VERBOSE_MODE = False  # set to True to enable additional print statements for debugging
+
+
 def run(
     architecture: str,
     matpath: str,
@@ -44,6 +51,7 @@ def run(
         continuous_aug,
         mil,
     )
+    from shared.constants import CLASS_NAMES
     from torch.utils.data import WeightedRandomSampler
     from shared.mat_reader import MatReader
     from shared.early_stopping import EarlyStopping
@@ -94,9 +102,13 @@ def run(
         json.dump(hyperparams, f, indent=2)
 
     device = (
-        "cuda"
-        if torch.cuda.is_available()
-        else "mps" if torch.backends.mps.is_available() else "cpu"
+        "cpu"
+        if architecture == "lsvm"  # https://github.com/pytorch/pytorch/issues/141287
+        else (
+            "cuda"
+            if torch.cuda.is_available()
+            else "mps" if torch.backends.mps.is_available() else "cpu"
+        )
     )
     print(f"Using device: {device}")
 
@@ -112,7 +124,7 @@ def run(
 
     reporter = FoldReporter(
         num_classes=num_classes,
-        class_names=["Healthy", "LGC", "HGC", "IDC"],
+        class_names=CLASS_NAMES,
     )
 
     for fold, (train_indices, val_indices) in enumerate(
@@ -279,6 +291,26 @@ def run(
             train_loader = DataLoader(
                 train_subset, batch_size=batch_size, sampler=sampler
             )
+        elif architecture == "lsvm":
+            from architectures.linear_svm import LinearSVM, RawDataset
+
+            dataset = RawDataset(
+                mat_reader,
+                eff_fov_indices=train_indices.tolist(),
+                train=True,
+            )
+            val_subset = RawDataset(
+                mat_reader,
+                eff_fov_indices=val_indices.tolist(),
+                train=False,
+                mean_override=dataset.z_normalizer.mean,
+                std_override=dataset.z_normalizer.std,
+            )
+            model = LinearSVM(
+                num_classes=num_classes, freeze_all=(head_only_epochs > 0)
+            ).to(device)
+            train_subset = dataset
+            train_loader = DataLoader(train_subset, batch_size=batch_size, shuffle=True)
         else:
             raise NotImplementedError(f"Architecture {architecture} not implemented.")
 
@@ -321,7 +353,11 @@ def run(
                     loss.backward()
                     engine.optimizer.step()
                     running_loss += loss.item() * bags.size(0)
-                elif architecture in ("ordinal", "regularized", "continuous_aug"):
+                elif architecture in (
+                    "ordinal",
+                    "regularized",
+                    "continuous_aug",
+                ):
                     patches, ordinal_targets, int_class_labels, _patient_ids = batch
                     patches = patches.to(device)
                     targets = ordinal_targets.to(device)  # (batch, K-1) float
@@ -332,6 +368,14 @@ def run(
                     engine.optimizer.step()
                     running_loss += loss.item() * patches.size(0)
                 else:
+                    if architecture == "lsvm":
+                        from architectures.linear_svm import get_loss_fn
+
+                        engine.criterion = get_loss_fn()  # override
+
+                        # MultiMarginLoss no MPS support: https://github.com/pytorch/pytorch/issues/141287
+                        device = "cpu"
+
                     patches, int_class_labels, _patient_ids = batch
                     patches = patches.to(device)
                     targets = int_class_labels.to(device)
@@ -366,7 +410,11 @@ def run(
                         outputs = mil_val_logits
                         loss = engine.criterion(outputs, targets)
                         val_loss += loss.item() * bags.size(0)
-                    elif architecture in ("ordinal", "regularized", "continuous_aug"):
+                    elif architecture in (
+                        "ordinal",
+                        "regularized",
+                        "continuous_aug",
+                    ):
                         patches, ordinal_targets, int_class_labels, _patient_ids = batch
                         patches = patches.to(device)
                         targets = ordinal_targets.to(device)  # (batch, K-1) float
@@ -388,7 +436,7 @@ def run(
                             f"Patient ID {pid} found in both training and validation sets!"
                         )
                         if pid in debug_stratification:
-                            if debug_stratification[pid] != label:
+                            if VERBOSE_MODE and debug_stratification[pid] != label:
                                 print(
                                     (
                                         "Stratification error: "

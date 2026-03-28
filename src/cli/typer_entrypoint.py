@@ -29,6 +29,7 @@ class Architecture(str, Enum):
     REGULARIZED = "regularized"
     CONTINUOUS_AUG = "continuous_aug"
     MIL = "mil"
+    LINEAR_SVM = "lsvm"
 
 
 @app.command()

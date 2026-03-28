@@ -92,10 +92,14 @@ class LinearSVM(nn.Module):
 
         for param in resnet_model.parameters():
             param.requires_grad = False
+        for param in resnet_model.fc.parameters():
+            param.requires_grad = True
 
         if not freeze_all:
             for param in resnet_model.layer4.parameters():
                 param.requires_grad = True
+
+        self.resnet_model = resnet_model
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
         """Forward pass through the model."""
