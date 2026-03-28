@@ -90,6 +90,12 @@ class MatReader:
                 labels_list.extend([CLASS_NAMES.index(classname)] * len(names))
                 ids_list.extend([f"{name[0]}_{name[1]}" for name in names])
 
+                if classname == "LGC":
+                    mirrored_data = np.flip(multimodal_data, axis=-1)
+                    images_list.append(mirrored_data)
+                    labels_list.extend([CLASS_NAMES.index(classname)] * len(names))
+                    ids_list.extend([f"{name[0]}_{name[1]}" for name in names])
+
         self.images = np.concatenate(images_list, axis=0)
         self.class_labels = np.array(labels_list)
         self.patient_ids = np.array(ids_list)
