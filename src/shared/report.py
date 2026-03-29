@@ -37,6 +37,8 @@ class FoldReporter:
         all_labels: torch.Tensor,
         train_preds: torch.Tensor | None = None,
         train_labels: torch.Tensor | None = None,
+        train_pids: list[str] | None = None,
+        val_pids: list[str] | None = None,
         is_ordinal: bool = False,
     ) -> None:
         """
@@ -61,6 +63,12 @@ class FoldReporter:
                          the train CM panel is left blank.
             train_labels: Concatenated integer train class labels from the
                           last epoch, shape (N,). If None, train CM is blank.
+            train_pids: Patient IDs from the last training epoch, aligned
+                        element-wise with train_labels. If None, train rows
+                        are omitted from patient_splits.csv.
+            val_pids: Patient IDs from the last validation epoch, aligned
+                      element-wise with all_labels. If None, val rows are
+                      omitted from patient_splits.csv.
             is_ordinal: If True, uses the ordinal decode + cumulative-sigmoid
                         probability path. If False, uses argmax + softmax.
         """
@@ -202,3 +210,51 @@ class FoldReporter:
         plt.tight_layout()
         plt.savefig(os.path.join(output_dir, "results.png"), dpi=150)
         plt.close()
+
+        # --- Patient-split table (one row per unique patient per split) ---
+        import csv
+
+        seen_pids: set[tuple[str, str]] = set()  # (patient_id, split)
+        rows: list[dict[str, str]] = []
+        if val_pids is not None:
+            for pid, lbl in zip(val_pids, all_labels_np):
+                key = (pid, "val")
+                if key in seen_pids:
+                    continue
+                seen_pids.add(key)
+                lbl_int = int(lbl)
+                rows.append(
+                    {
+                        "patient_id": pid,
+                        "label": str(lbl_int),
+                        "class_name": self.class_names[lbl_int],
+                        "split": "val",
+                    }
+                )
+        if train_pids is not None and train_labels is not None:
+            train_labels_np: np.ndarray = train_labels.numpy()
+            for pid, lbl in zip(train_pids, train_labels_np):
+                key = (pid, "train")
+                if key in seen_pids:
+                    continue
+                seen_pids.add(key)
+                lbl_int = int(lbl)
+                rows.append(
+                    {
+                        "patient_id": pid,
+                        "label": str(lbl_int),
+                        "class_name": self.class_names[lbl_int],
+                        "split": "train",
+                    }
+                )
+        with open(
+            os.path.join(output_dir, "patient_splits.csv"),
+            "w",
+            newline="",
+            encoding="utf-8",
+        ) as csv_file:
+            writer = csv.DictWriter(
+                csv_file, fieldnames=["patient_id", "label", "class_name", "split"]
+            )
+            writer.writeheader()
+            writer.writerows(rows)

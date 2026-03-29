@@ -405,6 +405,7 @@ def run(
                 # collect for train confusion matrix (last epoch's data used at report time)
                 train_preds_last.append(outputs.detach().cpu())
                 train_labels_last.append(int_class_labels.cpu())
+                train_pids_last.extend(_patient_ids)
                 for pid in _patient_ids:
                     seen_in_training.add(pid)
             epoch_train_loss = running_loss / len(train_subset)
@@ -412,6 +413,7 @@ def run(
 
             # reset predictions and labels to track only last epoch's validation results
             all_preds, all_labels = [], []
+            val_pids = []
 
             # evaluate
             model.eval()
@@ -447,6 +449,7 @@ def run(
                         val_loss += loss.item() * patches.size(0)
                     all_preds.append(outputs.cpu())
                     all_labels.append(int_class_labels.cpu())
+                    val_pids.extend(_patient_ids)
                     for label, pid in zip(int_class_labels.numpy(), _patient_ids):
                         assert pid not in seen_in_training, (
                             "Data leakage detected: "
@@ -501,5 +504,7 @@ def run(
                 train_labels=(
                     torch.cat(train_labels_last) if train_labels_last else None
                 ),
+                train_pids=train_pids_last if train_pids_last else None,
+                val_pids=val_pids if val_pids else None,
                 is_ordinal=architecture in ("ordinal", "regularized", "continuous_aug"),
             )
