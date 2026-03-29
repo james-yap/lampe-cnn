@@ -156,15 +156,33 @@ class OptimizerEngine:
         if epoch != self._head_only_epochs:
             return False
 
-        layer4_params = [
-            p for name, p in self._model.named_parameters() if "layer4" in name
+        # ResNet18
+        unfrozen_feature_params = [
+            p for name, p in self._model.named_parameters() if "layer2" in name
         ]
-        for p in layer4_params:
-            p.requires_grad = True
+
+        # In VGG-16, Block 5 corresponds to indices 24 through 30 in model.features:
+        # 24: Conv2d(512, 512, kernel_size=(3, 3))
+        # 25: ReLU(inplace=True)
+        # 26: Conv2d(512, 512, kernel_size=(3, 3))
+        # 27: ReLU(inplace=True)
+        # 28: Conv2d(512, 512, kernel_size=(3, 3))
+        # 29: ReLU(inplace=True)
+        # 30: MaxPool2d(kernel_size=2, stride=2)
+
+        # unfrozen_feature_params = []
+        # for i, layer in enumerate(self._model.features):
+        #     if i >= 24:
+        #         for param in layer.parameters():
+        #             unfrozen_feature_params.append(param)
+
+        for param in unfrozen_feature_params:
+            param.requires_grad = True
+
         self.optimizer.add_param_group(
             {
-                "params": layer4_params,
-                "lr": self._lr * 0.1,
+                "params": unfrozen_feature_params,
+                "lr": self._lr * 0.05,
                 "weight_decay": self._weight_decay,
             }
         )
