@@ -110,15 +110,21 @@ def run(
     ) as f:
         json.dump(hyperparams, f, indent=2)
 
+    # device = (
+    #     "cpu"
+    #     if architecture == "lsvm"  # https://github.com/pytorch/pytorch/issues/141287
+    #     else (
+    #         "cuda"
+    #         if torch.cuda.is_available()
+    #         else "mps" if torch.backends.mps.is_available() else "cpu"
+    #     )
+    # )
     device = (
-        "cpu"
-        if architecture == "lsvm"  # https://github.com/pytorch/pytorch/issues/141287
-        else (
-            "cuda"
-            if torch.cuda.is_available()
-            else "mps" if torch.backends.mps.is_available() else "cpu"
-        )
+        "cuda"
+        if torch.cuda.is_available()
+        else "mps" if torch.backends.mps.is_available() else "cpu"
     )
+
     print(f"Using device: {device}")
 
     # random_state is set for reproducibility,
@@ -340,6 +346,8 @@ def run(
         all_preds, all_labels, debug_stratification = [], [], {}
         train_preds_last: list[torch.Tensor] = []
         train_labels_last: list[torch.Tensor] = []
+        train_pids_last: list[str] = []
+        val_pids: list[str] = []
 
         seen_in_training = set()  # used for data leakage detection
 
@@ -351,6 +359,7 @@ def run(
             model.train()
             running_loss = 0.0
             train_preds_last, train_labels_last = [], []
+            train_pids_last = []
             for batch in train_loader:
                 if architecture == "mil":
                     bags, int_class_labels, _patient_ids = batch
@@ -383,9 +392,6 @@ def run(
                         from architectures.linear_svm import get_loss_fn
 
                         engine.criterion = get_loss_fn()  # override
-
-                        # MultiMarginLoss no MPS support: https://github.com/pytorch/pytorch/issues/141287
-                        device = "cpu"
 
                     patches, int_class_labels, _patient_ids = batch
                     patches = patches.to(device)
