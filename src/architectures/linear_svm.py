@@ -26,6 +26,50 @@ class RawDataset(Dataset[Datapoint]):
     """
     Un-augmented data set.
     No geometric augmentation, no class balancing, no per-patch sample weights.
+    """
+
+    mat_reader: MatReader
+
+    train: bool
+
+    def __init__(
+        self,
+        mat_reader: MatReader,
+        eff_fov_indices: list[int],
+        train: bool = True,
+    ) -> None:
+        """
+        Args:
+            mat_reader:      Loaded MatReader instance.
+            eff_fov_indices: FOV indices for this split (train or val).
+            train:           Does nothing. Left in for interface consistency.
+        """
+        self.mat_reader = mat_reader
+        self.eff_fov_indices = eff_fov_indices
+        self.train = train
+
+        report_class_distribution(mat_reader, eff_fov_indices, train)
+
+    def __len__(self) -> int:
+        """Returns number of data points."""
+        return len(self.eff_fov_indices)
+
+    def __getitem__(self, idx: int) -> Datapoint:
+        eff_idx = self.eff_fov_indices[idx]
+
+        image = self.mat_reader.images[eff_idx]  # (C, H, W)
+        image = torch.from_numpy(image).float()
+
+        class_label = int(self.mat_reader.class_labels[eff_idx])
+        patient_id = str(self.mat_reader.patient_ids[eff_idx])
+
+        return image, class_label, patient_id
+
+
+class ZScoreDataset(Dataset[Datapoint]):
+    """
+    Un-augmented data set.
+    No geometric augmentation, no class balancing, no per-patch sample weights.
 
     Contains only global z-score normalization.
     """
@@ -68,7 +112,7 @@ class RawDataset(Dataset[Datapoint]):
 
         image = self.mat_reader.images[eff_idx]  # (C, H, W)
         image = torch.from_numpy(image).float()
-        image = self.z_normalizer.normalize(image)
+        image = self.z_normalizer.normalize_and_clip(image)
 
         class_label = int(self.mat_reader.class_labels[eff_idx])
         patient_id = str(self.mat_reader.patient_ids[eff_idx])

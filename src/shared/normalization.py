@@ -65,9 +65,11 @@ class ZScoreNormalizer:
         assert mean is not None and std is not None
         return mean, std
 
-    def normalize(self, image: torch.Tensor) -> torch.Tensor:
+    def normalize_and_clip(self, image: torch.Tensor) -> torch.Tensor:
         """
         Applies z-score normalization to the given image tensor using the computed mean and std.
+        Clips the normalized values to a reasonable range to avoid extreme outliers (bright or dark pixels).
         """
 
-        return (image - self.mean[:, None, None]) / self.std[:, None, None]
+        normalized_image = (image - self.mean[:, None, None]) / self.std[:, None, None]
+        return torch.clamp(normalized_image, -3.0, 5.0)

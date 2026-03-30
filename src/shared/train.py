@@ -309,14 +309,14 @@ def run(
                 train_subset, batch_size=batch_size, sampler=sampler
             )
         elif architecture == "lsvm":
-            from architectures.linear_svm import LinearSVM, RawDataset
+            from architectures.linear_svm import LinearSVM, ZScoreDataset
 
-            dataset = RawDataset(
+            dataset = ZScoreDataset(
                 mat_reader,
                 eff_fov_indices=train_indices.tolist(),
                 train=True,
             )
-            val_subset = RawDataset(
+            val_subset = ZScoreDataset(
                 mat_reader,
                 eff_fov_indices=val_indices.tolist(),
                 train=False,
