@@ -18,6 +18,7 @@ def run(matpath: str) -> None:
     """
     import numpy as np
     from shared.mat_reader import MatReader
+    from shared.constants import CLASS_NAMES
 
     mat_reader = MatReader(matpath)
     height, width = mat_reader.get_height_width()
@@ -32,8 +33,7 @@ def run(matpath: str) -> None:
     )
     print("Class distribution:")
 
-    class_names = ["Healthy", "LGC", "HGC", "IDC"]
-    for cls_idx, cls_name in enumerate(class_names):
+    for cls_idx, cls_name in enumerate(CLASS_NAMES):
         mask: np.ndarray = mat_reader.class_labels == cls_idx
         indices_cls: np.ndarray = np.where(mask)[0]
         count = int(indices_cls.size)

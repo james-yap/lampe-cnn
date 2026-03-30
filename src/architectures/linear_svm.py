@@ -8,6 +8,7 @@ Un-augmented, bad SHG removed.
 Works on sparse, imbalanced data as in the original paper (Gagnon et al., 2025).
 """
 
+from shared.constants import CLASS_NAMES
 import torch
 from typing import cast
 from torch import nn
@@ -125,7 +126,9 @@ class LinearSVM(nn.Module):
     Linear SVM classification head on frozen ResNet18 features.
     """
 
-    def __init__(self, num_classes: int = 4, freeze_all: bool = False) -> None:
+    def __init__(
+        self, num_classes: int = len(CLASS_NAMES), freeze_all: bool = False
+    ) -> None:
         super().__init__()
 
         weights = models.ResNet18_Weights.DEFAULT
@@ -135,6 +138,7 @@ class LinearSVM(nn.Module):
             model, return_nodes={"layer2": "features"}
         )
 
+        # phased unfreezing: will be unfrozen later by optimizer
         for param in self.feature_extractor.parameters():
             param.requires_grad = False
 
