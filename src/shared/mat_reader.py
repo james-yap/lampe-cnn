@@ -90,15 +90,23 @@ class MatReader:
                 labels_list.extend([CLASS_NAMES.index(classname)] * len(names))
                 ids_list.extend([f"{name[0]}_{name[1]}" for name in names])
 
-                if classname == "LGC":
-                    mirrored_data = np.flip(multimodal_data, axis=-1)
-                    images_list.append(mirrored_data)
-                    labels_list.extend([CLASS_NAMES.index(classname)] * len(names))
-                    ids_list.extend([f"{name[0]}_{name[1]}" for name in names])
+                # if classname == "LGC":
+                #     mirrored_data = np.flip(multimodal_data, axis=-1)
+                #     images_list.append(mirrored_data)
+                #     labels_list.extend([CLASS_NAMES.index(classname)] * len(names))
+                #     ids_list.extend([f"{name[0]}_{name[1]}" for name in names])
 
         self.images = np.concatenate(images_list, axis=0)
         self.class_labels = np.array(labels_list)
         self.patient_ids = np.array(ids_list)
+
+        # Geometric augmentation: add 90°, 180°, 270° rotations (axes 2,3 = H,W)
+        # rot90 = np.rot90(self.images, k=1, axes=(2, 3))
+        # rot180 = np.rot90(self.images, k=2, axes=(2, 3))
+        # rot270 = np.rot90(self.images, k=3, axes=(2, 3))
+        # self.images = np.concatenate([self.images, rot90, rot180, rot270], axis=0)
+        # self.class_labels = np.tile(self.class_labels, 4)
+        # self.patient_ids = np.tile(self.patient_ids, 4)
 
     def get_dims(self) -> tuple[int, int, int, int]:
         """

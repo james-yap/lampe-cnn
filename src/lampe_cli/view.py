@@ -27,7 +27,7 @@ def run(matpath: str, fov_index: int, output_dir: str = ".") -> None:
     import numpy as np
     from shared.mat_reader import MatReader
     from shared.rendering_engine import render_fov_figure
-    from cli.dataset_info import run as print_dataset_info
+    from lampe_cli.dataset_info import run as print_dataset_info
 
     mat_reader = MatReader(matpath)
     print_dataset_info(matpath)

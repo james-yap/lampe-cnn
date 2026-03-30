@@ -248,7 +248,7 @@ def get_loss_fn() -> nn.Module:
     Returns:
         nn.Module: The loss function to use during training.
     """
-    # return nn.CrossEntropyLoss()
-    return (
-        nn.MultiMarginLoss()
-    )  # no MPS support: https://github.com/pytorch/pytorch/issues/141287
+    return nn.CrossEntropyLoss()
+    # return (
+    #     nn.MultiMarginLoss()
+    # )  # no MPS support: https://github.com/pytorch/pytorch/issues/141287

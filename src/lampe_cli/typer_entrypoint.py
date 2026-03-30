@@ -85,7 +85,7 @@ def dataset_info(matpath: str) -> None:
     Print a dataset summary: total FOV count, image dimensions, and per-class
     FOV counts, global index ranges, and patient IDs.
     """
-    from cli.dataset_info import run
+    from lampe_cli.dataset_info import run
 
     run(matpath)
 
@@ -105,7 +105,7 @@ def infer(
     Requires model weights saved during training (lampe-cli train ... -s).
     The hyperparams.json in the parent of artifact_dir is read automatically.
     """
-    from cli.infer import run
+    from lampe_cli.infer import run
 
     run(artifact_dir, matpath, fov_index)
 
@@ -124,7 +124,7 @@ def view(
     Saves view_fov{N}.png to output_dir (default: current directory).
     The attention heatmap panel is blank; the title shows only the true label.
     """
-    from cli.view import run
+    from lampe_cli.view import run
 
     run(matpath, fov_index, output_dir)
 
