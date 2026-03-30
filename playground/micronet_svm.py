@@ -5,7 +5,7 @@ import numpy as np
 from sklearn.svm import SVC
 from sklearn.model_selection import GroupKFold
 from sklearn.preprocessing import StandardScaler
-from sklearn.metrics import accuracy_score, classification_report
+from sklearn.metrics import accuracy_score, classification_report, confusion_matrix
 import pretrained_microscopy_models as pmm
 import torch.utils.model_zoo as model_zoo
 
@@ -127,7 +127,7 @@ def run_hybrid_pipeline(mat_data_path: str) -> None:
 
     # Setup SVM with Grouped K-Fold
     # Using 'poly' kernel and 'ovo' (one-vs-one) to mirror the ECOC approach.
-    gkf = GroupKFold(n_splits=5)
+    gkf = GroupKFold(n_splits=4)
     svm_classifier = SVC(
         kernel="poly", class_weight="balanced", decision_function_shape="ovo"
     )
@@ -158,6 +158,13 @@ def run_hybrid_pipeline(mat_data_path: str) -> None:
         all_y_pred.extend(y_pred)
 
         print(f"Fold {fold+1} Accuracy: {acc * 100:.2f}%")
+        cm = confusion_matrix(y_test, y_pred)
+        print(f"Confusion Matrix (Fold {fold+1}):")
+        header = "          " + "  ".join(f"{name:>10}" for name in CLASS_NAMES)
+        print(header)
+        for i, row in enumerate(cm):
+            row_str = "  ".join(f"{v:>10}" for v in row)
+            print(f"{CLASS_NAMES[i]:>10}  {row_str}")
 
     print("\n--- Final Results ---")
     print(
