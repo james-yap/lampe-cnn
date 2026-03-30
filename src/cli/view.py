@@ -52,6 +52,5 @@ def run(matpath: str, fov_index: int, output_dir: str = ".") -> None:
         true_class=true_class,
         class_names=CLASS_NAMES,
         output_path=output_path,
-        attn_np=None,
     )
     print(f"Saved: {output_path}")

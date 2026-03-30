@@ -20,10 +20,11 @@ def render_fov_figure(
     true_class: int,
     class_names: list[str],
     output_path: str,
-    attn_np: np.ndarray | None = None,
-    sliding_factor: int = 5,
+    # attn_np: np.ndarray | None = None,   # MIL patch-attention (unused: lsvm path)
+    # sliding_factor: int = 5,             # MIL grid dimension  (unused: lsvm path)
     pred_class: int | None = None,
     confidence: float | None = None,
+    heatmap_2d: np.ndarray | None = None,
 ) -> None:
     """
     Build and save a 5-panel mosaic figure for a single FOV.
@@ -49,18 +50,17 @@ def render_fov_figure(
         true_class:    Integer true class label.
         class_names:   List mapping integer class index to display name.
         output_path:   Full path at which to save the PNG.
-        attn_np:       Per-patch attention weights, shape (N_patches,).  If
-                       None the attention panel is rendered as a blank grey
-                       image and no contour is drawn on the composite.
-        sliding_factor: Spatial grid dimension (factor×factor = N_patches).
-                        Used to reshape and upsample attn_np.  Ignored when
-                        attn_np is None.
+        # attn_np:    (MIL) Per-patch attention weights — unused in lsvm path.
+        # sliding_factor: (MIL) Grid dimension — unused in lsvm path.
         pred_class:    Predicted class index.  If None the suptitle shows
                        only the true label (view mode).
         confidence:    Softmax probability of the predicted class.  Only
                        shown in the suptitle when pred_class is also provided.
+        heatmap_2d:    Pre-computed, pre-normalised (0–1) spatial heatmap of
+                       shape (H, W).  When provided, used directly in place of
+                       the attn_np + sliding_factor path (e.g. LayerCAM output).
+                       Takes precedence over attn_np.
     """
-    import scipy.ndimage
     import matplotlib.cm as mcm
     import matplotlib.colors as mcolors
     from matplotlib import pyplot as plt
@@ -77,21 +77,23 @@ def render_fov_figure(
     # R=Proteins, G=Lipids, B=Collagen
     composite: np.ndarray = np.stack([ch1, ch0, ch2], axis=-1)  # (H, W, 3)
 
-    # --- Attention heatmap ---
-    attn_upsampled_norm: np.ndarray | None = None
+    # --- Heatmap (LayerCAM) ---
+    heatmap_norm: np.ndarray | None = heatmap_2d  # already [0, 1], shape (H, W)
     heatmap_rgb: np.ndarray | None = None
 
-    if attn_np is not None:
-        attn_grid: np.ndarray = attn_np.reshape(sliding_factor, sliding_factor)
-        zoom_y = height / sliding_factor
-        zoom_x = width / sliding_factor
-        attn_upsampled: np.ndarray = scipy.ndimage.zoom(  # type: ignore[assignment]
-            attn_grid, (zoom_y, zoom_x), order=1
-        )
-        attn_upsampled_norm = robust_minmax(attn_upsampled)
+    if heatmap_norm is not None:
         hot_cmap = mcm.get_cmap("hot")
-        heatmap_rgba: np.ndarray = hot_cmap(attn_upsampled_norm)  # type: ignore[assignment]
+        heatmap_rgba: np.ndarray = hot_cmap(heatmap_norm)  # type: ignore[assignment]
         heatmap_rgb = heatmap_rgba[:, :, :3]  # (H, W, 3)
+
+    # MIL patch-attention path (unused: lsvm uses heatmap_2d instead)
+    # elif attn_np is not None:
+    #     attn_grid = attn_np.reshape(sliding_factor, sliding_factor)
+    #     zoom_y = height / sliding_factor
+    #     zoom_x = width / sliding_factor
+    #     attn_upsampled = scipy.ndimage.zoom(attn_grid, (zoom_y, zoom_x), order=1)
+    #     heatmap_norm = robust_minmax(attn_upsampled)
+    #     heatmap_rgb = mcm.get_cmap("hot")(heatmap_norm)[:, :, :3]
 
     # --- Mosaic layout ---
     layout = """
@@ -116,27 +118,21 @@ def render_fov_figure(
     axes["D"].set_title("Composite\n(pseudo-RGB)")
     axes["D"].axis("off")
 
-    if attn_upsampled_norm is not None:
-        threshold = float(np.percentile(attn_upsampled_norm, 75))
-        axes["D"].contour(
-            attn_upsampled_norm, levels=[threshold], colors="red", linewidths=3
-        )
+    if heatmap_norm is not None:
+        threshold = float(np.percentile(heatmap_norm, 75))
+        axes["D"].contour(heatmap_norm, levels=[threshold], colors="red", linewidths=3)
 
     if heatmap_rgb is not None:
         axes["E"].imshow(heatmap_rgb)
-        axes["E"].set_title("Attention Heatmap")
+        axes["E"].set_title("LayerCAM Heatmap")
         axes["E"].axis("off")
-        if attn_np is not None:
-            norm = mcolors.Normalize(
-                vmin=float(attn_np.min()), vmax=float(attn_np.max())
-            )
-            sm = mcm.ScalarMappable(norm=norm, cmap="hot")
-            sm.set_array(np.array([]))
-            cbar = fig.colorbar(sm, ax=axes["E"], fraction=0.046, pad=0.04)
-            cbar.set_label("Attention weight")
+        sm = mcm.ScalarMappable(norm=mcolors.Normalize(vmin=0.0, vmax=1.0), cmap="hot")
+        sm.set_array(np.array([]))
+        cbar = fig.colorbar(sm, ax=axes["E"], fraction=0.046, pad=0.04)
+        cbar.set_label("CAM score")
     else:
         axes["E"].imshow(np.zeros((height, width)), cmap="gray", vmin=0.0, vmax=1.0)
-        axes["E"].set_title("Attention Heatmap\n(no inference)")
+        axes["E"].set_title("LayerCAM Heatmap\n(no inference)")
         axes["E"].axis("off")
 
     # --- Suptitle ---
