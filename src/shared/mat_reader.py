@@ -100,6 +100,18 @@ class MatReader:
         self.class_labels = np.array(labels_list)
         self.patient_ids = np.array(ids_list)
 
+        # Geometric augmentation: reflection across vertical axis (flip left-right)
+        # flipped = np.flip(self.images, axis=-1)
+        # self.images = np.concatenate([self.images, flipped], axis=0)
+        # self.class_labels = np.tile(self.class_labels, 2)
+        # self.patient_ids = np.tile(self.patient_ids, 2)
+
+        # Geometric augmentation: reflection across horizontal axis (flip up-down)
+        # flipped_ud = np.flip(self.images, axis=-2)
+        # self.images = np.concatenate([self.images, flipped_ud], axis=0)
+        # self.class_labels = np.tile(self.class_labels, 2)
+        # self.patient_ids = np.tile(self.patient_ids, 2)
+
         # Geometric augmentation: add 90°, 180°, 270° rotations (axes 2,3 = H,W)
         # rot90 = np.rot90(self.images, k=1, axes=(2, 3))
         # rot180 = np.rot90(self.images, k=2, axes=(2, 3))
