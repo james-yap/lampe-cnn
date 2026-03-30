@@ -5,11 +5,11 @@ import numpy as np
 from sklearn.svm import SVC
 from sklearn.model_selection import GroupKFold
 from sklearn.preprocessing import StandardScaler
+from sklearn.decomposition import PCA
 from sklearn.metrics import accuracy_score, classification_report, confusion_matrix
 import pretrained_microscopy_models as pmm
 import torch.utils.model_zoo as model_zoo
 
-# Assume MatReader is imported
 from shared.mat_reader import MatReader
 from shared.constants import CLASS_NAMES
 
@@ -42,7 +42,7 @@ class NLOMicroscopyDataset(Dataset):
         # 3. Channel-wise Standardization (Crucial for multi-modal NLO data)
         # We normalize each channel (SHG, SRS 1450, SRS 1668) independently across
         # the entire dataset to have a mean of 0 and std of 1.
-        num_channels = self.images.shape[1]
+        num_channels = mat_reader.get_num_channels()
         for c in range(num_channels):
             mean = self.images[:, c, :, :].mean()
             std = self.images[:, c, :, :].std()
@@ -111,7 +111,7 @@ def run_hybrid_pipeline(mat_data_path: str) -> None:
 
     # Initialize MicroNet Feature Extractor
     print("Initializing MicroNet ResNet50...")
-    model = torch.hub.load("pytorch/vision:v0.10.0", "resnet50", pretrained=False)
+    model = torch.hub.load("pytorch/vision:v0.10.0", "resnet50", weights=None)
     url = pmm.util.get_pretrained_microscopynet_url("resnet50", "micronet")
     model.load_state_dict(model_zoo.load_url(url, map_location=device))
 
@@ -147,6 +147,12 @@ def run_hybrid_pipeline(mat_data_path: str) -> None:
         X_train_scaled = scaler.fit_transform(X_train)
         X_test_scaled = scaler.transform(X_test)
 
+        # PCA dimensionality reduction. Fit ONLY on training data.
+        pca = PCA(n_components=0.95, svd_solver="full")
+        X_train_scaled = pca.fit_transform(X_train_scaled)
+        X_test_scaled = pca.transform(X_test_scaled)
+        print(f"Fold {fold+1}: PCA reduced features to {pca.n_components_} dims")
+
         # Train and Predict
         svm_classifier.fit(X_train_scaled, y_train)
         y_pred = svm_classifier.predict(X_test_scaled)
@@ -178,5 +184,5 @@ def run_hybrid_pipeline(mat_data_path: str) -> None:
 
 if __name__ == "__main__":
     # Point this to the directory containing your _bulk_data.mat files
-    mat_directory_path = "lampe_dataset/Full images"
+    mat_directory_path = "lampe_dataset/3x3 bad SHG removed"
     run_hybrid_pipeline(mat_directory_path)
