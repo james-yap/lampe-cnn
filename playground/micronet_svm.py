@@ -11,6 +11,7 @@ import pretrained_microscopy_models as pmm
 import torch.utils.model_zoo as model_zoo
 
 from shared.mat_reader import MatReader
+from shared.normalization import ZScoreNormalizer
 from shared.constants import CLASS_NAMES
 
 
@@ -42,16 +43,20 @@ class NLOMicroscopyDataset(Dataset):
         # 3. Channel-wise Standardization (Crucial for multi-modal NLO data)
         # We normalize each channel (SHG, SRS 1450, SRS 1668) independently across
         # the entire dataset to have a mean of 0 and std of 1.
-        num_channels = mat_reader.get_num_channels()
-        for c in range(num_channels):
-            mean = self.images[:, c, :, :].mean()
-            std = self.images[:, c, :, :].std()
+        # num_channels = mat_reader.get_num_channels()
+        # for c in range(num_channels):
+        #     mean = self.images[:, c, :, :].mean()
+        #     std = self.images[:, c, :, :].std()
 
-            # Prevent division by zero if a channel is completely blank
-            if std > 1e-8:
-                self.images[:, c, :, :] = (self.images[:, c, :, :] - mean) / std
-            else:
-                self.images[:, c, :, :] = self.images[:, c, :, :] - mean
+        #     # Prevent division by zero if a channel is completely blank
+        #     if std > 1e-8:
+        #         self.images[:, c, :, :] = (self.images[:, c, :, :] - mean) / std
+        #     else:
+        #         self.images[:, c, :, :] = self.images[:, c, :, :] - mean
+        normalizer = ZScoreNormalizer(
+            mat_reader, eff_fov_indices=list(range(len(mat_reader.images)))
+        )  # TODO: data leakage. use eff_fov_indices
+        self.images = normalizer.normalize(self.images)
 
     def __len__(self) -> int:
         return len(self.images)
@@ -127,7 +132,7 @@ def run_hybrid_pipeline(mat_data_path: str) -> None:
 
     # Setup SVM with Grouped K-Fold
     # Using 'poly' kernel and 'ovo' (one-vs-one) to mirror the ECOC approach.
-    gkf = GroupKFold(n_splits=4)
+    gkf = GroupKFold(n_splits=10)
     svm_classifier = SVC(
         kernel="poly", class_weight="balanced", decision_function_shape="ovo"
     )
@@ -184,5 +189,6 @@ def run_hybrid_pipeline(mat_data_path: str) -> None:
 
 if __name__ == "__main__":
     # Point this to the directory containing your _bulk_data.mat files
-    mat_directory_path = "lampe_dataset/3x3 bad SHG removed"
+    # mat_directory_path = "lampe_dataset/3x3 bad SHG removed"
+    mat_directory_path = "lampe_dataset/Full images"
     run_hybrid_pipeline(mat_directory_path)
