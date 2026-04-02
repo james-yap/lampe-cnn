@@ -1,0 +1,116 @@
+Funnel Architecture
+
+
+SAMPLER FACTOR x1
+
+
+--- Final Results ---
+Mean CV Accuracy: 74.61% ± 9.48%
+Mean CV AUC: 85.87% ± 6.79%
+
+Global Classification Report:
+              precision    recall  f1-score   support
+
+         HGC       0.76      0.77      0.77        84
+         IDC       0.72      0.71      0.72        70
+
+    accuracy                           0.75       154
+   macro avg       0.74      0.74      0.74       154
+weighted avg       0.75      0.75      0.75       154
+
+ACC: [0.7586206896551724, 0.7741935483870968, 0.875, 0.5806451612903226, 0.7419354838709677]
+AUC: [0.9068627450980391, 0.8823529411764706, 0.9166666666666667, 0.7291666666666667, 0.8583333333333334]
+
+
+--- Final Results ---
+Mean CV Accuracy: 71.47% ± 3.42%
+Mean CV AUC: 77.77% ± 7.27%
+
+Global Classification Report:
+              precision    recall  f1-score   support
+
+         HGC       0.76      0.69      0.72        84
+         IDC       0.67      0.74      0.70        70
+
+    accuracy                           0.71       154
+   macro avg       0.71      0.72      0.71       154
+weighted avg       0.72      0.71      0.71       154
+
+ACC: [0.6774193548387096, 0.7666666666666667, 0.7333333333333333, 0.6774193548387096, 0.71875]
+AUC: [0.6833333333333333, 0.90625, 0.755656108597285, 0.7863247863247864, 0.7568627450980392]
+
+
+SAMPLER FACTOR x2
+
+--- Final Results ---
+Mean CV Accuracy: 80.67% ± 3.84%
+Mean CV AUC: 90.18% ± 2.49%
+
+Global Classification Report:
+              precision    recall  f1-score   support
+
+         HGC       0.86      0.77      0.81        84
+         IDC       0.76      0.84      0.80        70
+
+    accuracy                           0.81       154
+   macro avg       0.81      0.81      0.80       154
+weighted avg       0.81      0.81      0.81       154
+
+ACC: [0.8620689655172413, 0.8, 0.8333333333333334, 0.75, 0.7878787878787878]
+AUC: [0.9117647058823529, 0.9151785714285715, 0.9004524886877827, 0.8549019607843137, 0.926470588235294]
+
+
+--- Final Results ---
+Mean CV Accuracy: 77.85% ± 5.07%
+Mean CV AUC: 87.45% ± 6.46%
+
+Global Classification Report:
+              precision    recall  f1-score   support
+
+         HGC       0.82      0.76      0.79        84
+         IDC       0.74      0.80      0.77        70
+
+    accuracy                           0.78       154
+   macro avg       0.78      0.78      0.78       154
+weighted avg       0.78      0.78      0.78       154
+
+ACC: [0.8709677419354839, 0.78125, 0.7241379310344828, 0.7741935483870968, 0.7419354838709677]
+AUC: [0.9831932773109243, 0.9098039215686273, 0.8509615384615384, 0.8119658119658121, 0.8166666666666667]
+
+
+SAMPLER FACTOR x3
+
+--- Final Results ---
+Mean CV Accuracy: 67.65% ± 13.99%
+Mean CV AUC: 75.34% ± 25.61%
+
+Global Classification Report:
+              precision    recall  f1-score   support
+
+         HGC       0.69      0.74      0.71        84
+         IDC       0.66      0.60      0.63        70
+
+    accuracy                           0.68       154
+   macro avg       0.67      0.67      0.67       154
+weighted avg       0.67      0.68      0.67       154
+
+ACC: [0.7666666666666667, 0.75, 0.8333333333333334, 0.5806451612903226, 0.45161290322580644]
+AUC: [0.9330357142857143, 0.9372549019607843, 0.923076923076923, 0.7, 0.27350427350427353]
+
+
+--- Final Results ---
+Mean CV Accuracy: 74.80% ± 7.89%
+Mean CV AUC: 81.72% ± 10.81%
+
+Global Classification Report:
+              precision    recall  f1-score   support
+
+         HGC       0.77      0.76      0.77        84
+         IDC       0.72      0.73      0.72        70
+
+    accuracy                           0.75       154
+   macro avg       0.74      0.75      0.74       154
+weighted avg       0.75      0.75      0.75       154
+
+ACC: [0.8666666666666667, 0.6774193548387096, 0.7333333333333333, 0.8064516129032258, 0.65625]
+AUC: [0.9732142857142857, 0.65, 0.7601809954751131, 0.8675213675213675, 0.8352941176470587]

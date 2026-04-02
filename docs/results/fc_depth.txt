@@ -1,0 +1,78 @@
+sampler factor x2
+
+
+FC 2
+
+--- Final Results ---
+Mean CV Accuracy: 75.38% ± 7.34%
+Mean CV AUC: 82.91% ± 6.14%
+
+Global Classification Report:
+              precision    recall  f1-score   support
+
+         HGC       0.80      0.73      0.76        84
+         IDC       0.71      0.79      0.74        70
+
+    accuracy                           0.75       154
+   macro avg       0.75      0.76      0.75       154
+weighted avg       0.76      0.75      0.75       154
+
+ACC: [0.8064516129032258, 0.8064516129032258, 0.75, 0.6129032258064516, 0.7931034482758621]
+AUC: [0.8865546218487395, 0.7916666666666666, 0.8095238095238095, 0.7458333333333333, 0.9117647058823529]
+
+
+--- Final Results ---
+Mean CV Accuracy: 77.16% ± 4.09%
+Mean CV AUC: 86.22% ± 5.52%
+
+Global Classification Report:
+              precision    recall  f1-score   support
+
+         HGC       0.85      0.71      0.77        84
+         IDC       0.71      0.84      0.77        70
+
+    accuracy                           0.77       154
+   macro avg       0.78      0.78      0.77       154
+weighted avg       0.78      0.77      0.77       154
+
+ACC: [0.84375, 0.7741935483870968, 0.7241379310344828, 0.7741935483870968, 0.7419354838709677]
+AUC: [0.9098039215686274, 0.8865546218487396, 0.8846153846153846, 0.7541666666666667, 0.8760683760683761]
+
+
+FC 1
+
+
+--- Final Results ---
+Mean CV Accuracy: 73.91% ± 5.08%
+Mean CV AUC: 80.03% ± 4.73%
+
+Global Classification Report:
+              precision    recall  f1-score   support
+
+         HGC       0.80      0.70      0.75        84
+         IDC       0.69      0.79      0.73        70
+
+    accuracy                           0.74       154
+   macro avg       0.74      0.74      0.74       154
+weighted avg       0.75      0.74      0.74       154
+
+ACC: [0.6666666666666666, 0.7586206896551724, 0.7, 0.8125, 0.7575757575757576]
+AUC: [0.8035714285714286, 0.8186274509803921, 0.7104072398190046, 0.819607843137255, 0.8492647058823529]
+
+
+--- Final Results ---
+Mean CV Accuracy: 64.85% ± 19.35%
+Mean CV AUC: 71.28% ± 25.41%
+
+Global Classification Report:
+              precision    recall  f1-score   support
+
+         HGC       0.69      0.65      0.67        84
+         IDC       0.61      0.64      0.62        70
+
+    accuracy                           0.65       154
+   macro avg       0.65      0.65      0.65       154
+weighted avg       0.65      0.65      0.65       154
+
+ACC: [0.78125, 0.5333333333333333, 0.7666666666666667, 0.8387096774193549, 0.3225806451612903]
+AUC: [0.8380566801619433, 0.625, 0.9095022624434388, 0.9375, 0.25416666666666665]
