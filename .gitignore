@@ -1,6 +1,7 @@
 lampe_dataset/
 artifacts/
 model_weights.pth
+model.pth
 
 # Byte-compiled / optimized / DLL files
 __pycache__/
