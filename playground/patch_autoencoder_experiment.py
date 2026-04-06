@@ -1,36 +1,37 @@
 """
-Train a small classifier on top of a frozen patch-autoencoder encoder
-and evaluate at the FOV level using mean-logit aggregation.
+Train a patch autoencoder on LAMPE image patches.
 
 Usage
 -----
-PYTHONPATH=src uv run python playground/patch_encoder_classifier_experiment.py \
+PYTHONPATH=src uv run python playground/patch_autoencoder_experiment.py \
   --matpath "lampe_dataset/Full images" \
-  --checkpoint "artifacts/04_05-20_33-patch-autoencoder/best_autoencoder.pt" \
-  --epochs 10 \
-  --batch-size 64 \
+  --epochs 20 \
+  --batch-size 128 \
   --patch-size 64 \
   --stride 64
+
+Optional:
+  --latent-channels 128
+  --max-patches-per-fov 64
+  --save-reconstructions
 """
 
 from __future__ import annotations
 
 import argparse
 import json
+import math
 import os
 import random
-from collections import defaultdict
 from dataclasses import asdict, dataclass
 from datetime import datetime
 from typing import Sequence
 
 import numpy as np
 import torch
-from sklearn.metrics import accuracy_score, classification_report
 from sklearn.model_selection import StratifiedGroupKFold
 from torch import nn
 from torch.utils.data import DataLoader, Dataset
-from shared.constants import CLASS_NAMES
 
 from shared.mat_reader import MatReader
 
@@ -52,28 +53,27 @@ def get_device() -> str:
 @dataclass
 class Config:
     matpath: str
-    checkpoint: str
-    epochs: int = 30
-    batch_size: int = 64
+    epochs: int = 20
+    batch_size: int = 128
     patch_size: int = 64
     stride: int = 64
+    latent_channels: int = 128
     lr: float = 1e-3
-    weight_decay: float = 1e-4
+    weight_decay: float = 1e-5
     n_folds: int = 4
     num_workers: int = 0
     max_patches_per_fov: int | None = None
     seed: int = 42
+    save_reconstructions: bool = False
+    recon_batches_to_save: int = 1
 
 
-class PatchLabeledDataset(Dataset[tuple[torch.Tensor, int, int, str]]):
+class PatchAutoencoderDataset(Dataset[torch.Tensor]):
     """
-    Patch dataset that uses parent FOV label as patch label.
+    Unlabeled patch dataset for autoencoder training.
 
     Returns:
         patch_tensor: (C, H, W)
-        class_label: int
-        fov_idx: int
-        patient_id: str
     """
 
     def __init__(
@@ -91,6 +91,7 @@ class PatchLabeledDataset(Dataset[tuple[torch.Tensor, int, int, str]]):
         self.eff_fov_indices = list(eff_fov_indices)
         self.patch_size = patch_size
         self.stride = stride
+        self.seed = seed
 
         height, width = mat_reader.get_height_width()
         coords: list[tuple[int, int]] = []
@@ -98,6 +99,7 @@ class PatchLabeledDataset(Dataset[tuple[torch.Tensor, int, int, str]]):
             for x in range(0, width - patch_size + 1, stride):
                 coords.append((y, x))
 
+        # Avoid spatial bias from always taking top-left-first patches.
         if max_patches_per_fov is not None and max_patches_per_fov < len(coords):
             rng = random.Random(seed)
             rng.shuffle(coords)
@@ -127,7 +129,7 @@ class PatchLabeledDataset(Dataset[tuple[torch.Tensor, int, int, str]]):
     def __len__(self) -> int:
         return len(self.eff_fov_indices) * self.num_patches_per_fov
 
-    def __getitem__(self, idx: int) -> tuple[torch.Tensor, int, int, str]:
+    def __getitem__(self, idx: int) -> torch.Tensor:
         fov_idx = self.eff_fov_indices[idx // self.num_patches_per_fov]
         patch_idx = idx % self.num_patches_per_fov
         y, x = self.top_left_coords[patch_idx]
@@ -138,9 +140,7 @@ class PatchLabeledDataset(Dataset[tuple[torch.Tensor, int, int, str]]):
 
         patch = (patch - self.mean) / self.std
         patch_tensor = torch.from_numpy(patch).float()
-        class_label = int(self.mat_reader.class_labels[fov_idx])
-        patient_id = str(self.mat_reader.patient_ids[fov_idx])
-        return patch_tensor, class_label, int(fov_idx), patient_id
+        return patch_tensor
 
 
 class ConvPatchAutoencoder(nn.Module):
@@ -166,37 +166,9 @@ class ConvPatchAutoencoder(nn.Module):
         return self.decoder(self.encoder(x))
 
 
-class EncoderClassifier(nn.Module):
-    def __init__(
-        self, 
-        encoder: nn.Module, 
-        latent_channels: int = 128,
-        num_classes: int = 4,
-        freeze_encoder: bool = True,
-    ):
-        super().__init__()
-        self.encoder = encoder
-        for p in self.encoder.parameters():
-            p.requires_grad = not freeze_encoder
-
-        self.pool = nn.AdaptiveAvgPool2d((1, 1))
-        self.classifier = nn.Sequential(
-            nn.Flatten(),
-            nn.Linear(latent_channels, 64),
-            nn.ReLU(inplace=True),
-            nn.Dropout(0.3),
-            nn.Linear(64, num_classes),
-        )
-
-    def forward(self, x: torch.Tensor) -> torch.Tensor:
-        feats = self.encoder(x)
-        feats = self.pool(feats)
-        return self.classifier(feats)
-
-
-def train_one_epoch(
+def train_one_epoch_autoencoder(
     model: nn.Module,
-    loader: DataLoader[tuple[torch.Tensor, int, int, str]],
+    loader: DataLoader[torch.Tensor],
     optimizer: torch.optim.Optimizer,
     criterion: nn.Module,
     device: str,
@@ -205,13 +177,12 @@ def train_one_epoch(
     total_loss = 0.0
     total_n = 0
 
-    for x, y, _, _ in loader:
+    for x in loader:
         x = x.to(device)
-        y = y.to(device)
 
         optimizer.zero_grad()
-        logits = model(x)
-        loss = criterion(logits, y)
+        recon = model(x)
+        loss = criterion(recon, x)
         loss.backward()
         optimizer.step()
 
@@ -223,67 +194,98 @@ def train_one_epoch(
 
 
 @torch.no_grad()
-def evaluate_fov(
+def evaluate_autoencoder(
     model: nn.Module,
-    loader: DataLoader[tuple[torch.Tensor, int, int, str]],
+    loader: DataLoader[torch.Tensor],
     criterion: nn.Module,
     device: str,
-) -> tuple[float, float, np.ndarray, np.ndarray]:
+) -> float:
     model.eval()
-    total_patch_loss = 0.0
-    total_patch_n = 0
+    total_loss = 0.0
+    total_n = 0
 
-    fov_logits: dict[int, list[np.ndarray]] = defaultdict(list)
-    fov_targets: dict[int, int] = {}
-
-    for x, y, fov_idx, _ in loader:
+    for x in loader:
         x = x.to(device)
-        y = y.to(device)
-
-        logits = model(x)
-        loss = criterion(logits, y)
+        recon = model(x)
+        loss = criterion(recon, x)
 
         bs = x.size(0)
-        total_patch_loss += loss.item() * bs
-        total_patch_n += bs
+        total_loss += loss.item() * bs
+        total_n += bs
 
-        logits_np = logits.detach().cpu().numpy()
-        y_np = y.detach().cpu().numpy()
-        fov_idx_np = np.asarray(fov_idx)
+    return total_loss / max(total_n, 1)
 
-        for i in range(bs):
-            this_fov = int(fov_idx_np[i])
-            fov_logits[this_fov].append(logits_np[i])
-            if this_fov in fov_targets:
-                if fov_targets[this_fov] != int(y_np[i]):
-                    raise ValueError(f"Inconsistent labels found for FOV {this_fov}.")
-            else:
-                fov_targets[this_fov] = int(y_np[i])
 
-    all_targets: list[int] = []
-    all_preds: list[int] = []
+def tensor_to_display_image(x: torch.Tensor) -> np.ndarray:
+    """
+    Convert a normalized tensor image (C, H, W) into a displayable HWC uint8 image
+    by min-max scaling each sample independently.
+    """
+    arr = x.detach().cpu().numpy()
+    arr = np.transpose(arr, (1, 2, 0))
 
-    for this_fov in sorted(fov_logits.keys()):
-        mean_logits = np.mean(np.stack(fov_logits[this_fov], axis=0), axis=0)
-        pred = int(np.argmax(mean_logits))
-        target = fov_targets[this_fov]
+    min_val = arr.min()
+    max_val = arr.max()
+    if max_val - min_val < 1e-8:
+        arr = np.zeros_like(arr)
+    else:
+        arr = (arr - min_val) / (max_val - min_val)
 
-        all_targets.append(target)
-        all_preds.append(pred)
+    arr = np.clip(arr * 255.0, 0, 255).astype(np.uint8)
 
-    acc = accuracy_score(all_targets, all_preds)
+    if arr.shape[2] == 1:
+        arr = np.repeat(arr, 3, axis=2)
+    elif arr.shape[2] > 3:
+        arr = arr[:, :, :3]
 
-    return (
-        total_patch_loss / max(total_patch_n, 1),
-        float(acc),
-        np.array(all_targets),
-        np.array(all_preds),
-    )
+    return arr
+
+
+def save_reconstruction_grid(
+    model: nn.Module,
+    loader: DataLoader[torch.Tensor],
+    device: str,
+    out_path: str,
+    max_items: int = 8,
+) -> None:
+    """
+    Saves a simple side-by-side grid:
+    row i: original | reconstruction
+    """
+    try:
+        from PIL import Image
+    except ImportError:
+        print("PIL not available; skipping reconstruction image save.")
+        return
+
+    model.eval()
+    batch = next(iter(loader))
+    batch = batch.to(device)
+
+    with torch.no_grad():
+        recon = model(batch)
+
+    batch = batch[:max_items]
+    recon = recon[:max_items]
+
+    originals = [tensor_to_display_image(x) for x in batch]
+    reconstructions = [tensor_to_display_image(x) for x in recon]
+
+    h, w, c = originals[0].shape
+    n = len(originals)
+
+    canvas = np.zeros((n * h, 2 * w, c), dtype=np.uint8)
+    for i in range(n):
+        canvas[i * h : (i + 1) * h, 0:w, :] = originals[i]
+        canvas[i * h : (i + 1) * h, w : 2 * w, :] = reconstructions[i]
+
+    image = Image.fromarray(canvas)
+    image.save(out_path)
 
 
 def make_artifact_dir() -> str:
     t = datetime.now()
-    path = os.path.join("artifacts", f"{t:%m_%d-%H_%M}-encoder-classifier-fov")
+    path = os.path.join("artifacts", f"{t:%m_%d-%H_%M}-patch-autoencoder")
     os.makedirs(path, exist_ok=True)
     return path
 
@@ -291,32 +293,36 @@ def make_artifact_dir() -> str:
 def parse_args() -> Config:
     parser = argparse.ArgumentParser()
     parser.add_argument("--matpath", type=str, required=True)
-    parser.add_argument("--checkpoint", type=str, required=True)
-    parser.add_argument("--epochs", type=int, default=30)
-    parser.add_argument("--batch-size", type=int, default=64)
+    parser.add_argument("--epochs", type=int, default=20)
+    parser.add_argument("--batch-size", type=int, default=128)
     parser.add_argument("--patch-size", type=int, default=64)
     parser.add_argument("--stride", type=int, default=64)
+    parser.add_argument("--latent-channels", type=int, default=128)
     parser.add_argument("--lr", type=float, default=1e-3)
-    parser.add_argument("--weight-decay", type=float, default=1e-4)
+    parser.add_argument("--weight-decay", type=float, default=1e-5)
     parser.add_argument("--n-folds", type=int, default=4)
     parser.add_argument("--num-workers", type=int, default=0)
     parser.add_argument("--max-patches-per-fov", type=int, default=None)
     parser.add_argument("--seed", type=int, default=42)
+    parser.add_argument("--save-reconstructions", action="store_true")
+    parser.add_argument("--recon-batches-to-save", type=int, default=1)
     args = parser.parse_args()
 
     return Config(
         matpath=args.matpath,
-        checkpoint=args.checkpoint,
         epochs=args.epochs,
         batch_size=args.batch_size,
         patch_size=args.patch_size,
         stride=args.stride,
+        latent_channels=args.latent_channels,
         lr=args.lr,
         weight_decay=args.weight_decay,
         n_folds=args.n_folds,
         num_workers=args.num_workers,
         max_patches_per_fov=args.max_patches_per_fov,
         seed=args.seed,
+        save_reconstructions=args.save_reconstructions,
+        recon_batches_to_save=args.recon_batches_to_save,
     )
 
 
@@ -334,14 +340,6 @@ def main() -> None:
     print("Loading MatReader...")
     mat_reader = MatReader(cfg.matpath)
 
-    print("Loading autoencoder checkpoint...")
-    ckpt = torch.load(cfg.checkpoint, map_location="cpu", weights_only=False)
-
-    if "latent_channels" in ckpt:
-        latent_channels = int(ckpt["latent_channels"])
-    else:
-        latent_channels = int(ckpt["config"]["latent_channels"])
-
     images = mat_reader.images
     class_labels = mat_reader.class_labels
     patient_ids = mat_reader.patient_ids
@@ -354,13 +352,16 @@ def main() -> None:
 
     fold_results: list[dict[str, float]] = []
 
+    best_global_val_loss = math.inf
+    best_global_checkpoint_path = os.path.join(artifact_dir, "best_autoencoder.pt")
+
     for fold, (train_indices, val_indices) in enumerate(
         sgkf.split(images, class_labels, groups=patient_ids),
         start=1,
     ):
         print(f"\n--- Fold {fold}/{cfg.n_folds} ---")
 
-        train_dataset = PatchLabeledDataset(
+        train_dataset = PatchAutoencoderDataset(
             mat_reader=mat_reader,
             eff_fov_indices=train_indices.tolist(),
             patch_size=cfg.patch_size,
@@ -368,7 +369,7 @@ def main() -> None:
             max_patches_per_fov=cfg.max_patches_per_fov,
             seed=cfg.seed + fold,
         )
-        val_dataset = PatchLabeledDataset(
+        val_dataset = PatchAutoencoderDataset(
             mat_reader=mat_reader,
             eff_fov_indices=val_indices.tolist(),
             patch_size=cfg.patch_size,
@@ -377,6 +378,12 @@ def main() -> None:
             std=train_dataset.std,
             max_patches_per_fov=cfg.max_patches_per_fov,
             seed=cfg.seed + fold,
+        )
+
+        print(
+            f"Train patches: {len(train_dataset)} | "
+            f"Val patches: {len(val_dataset)} | "
+            f"Patches/FOV: {train_dataset.num_patches_per_fov}"
         )
 
         train_loader = DataLoader(
@@ -392,99 +399,117 @@ def main() -> None:
             num_workers=cfg.num_workers,
         )
 
-        autoencoder = ConvPatchAutoencoder(
+        model = ConvPatchAutoencoder(
             in_channels=mat_reader.get_num_channels(),
-            latent_channels=latent_channels,
-        )
-        autoencoder.load_state_dict(ckpt["model_state_dict"])
-
-        model = EncoderClassifier(
-            encoder = autoencoder.encoder,
-            latent_channels=latent_channels,
-            num_classes=len(CLASS_NAMES),
-            freeze_encoder=False,
+            latent_channels=cfg.latent_channels,
         ).to(device)
 
-        criterion = nn.CrossEntropyLoss()
+        criterion = nn.MSELoss()
         optimizer = torch.optim.Adam(
             model.parameters(),
             lr=cfg.lr,
             weight_decay=cfg.weight_decay,
         )
 
-        best_val_acc = -1.0
-        best_targets: np.ndarray | None = None
-        best_preds: np.ndarray | None = None
-        
-        patience = 5
-        epochs_no_improve = 0
+        best_fold_val_loss = math.inf
+        fold_history: list[dict[str, float]] = []
+
         for epoch in range(cfg.epochs):
-            train_loss = train_one_epoch(model, train_loader, optimizer, criterion, device)
-            val_loss, val_acc, targets, preds = evaluate_fov(model, val_loader, criterion, device)
+            train_loss = train_one_epoch_autoencoder(
+                model=model,
+                loader=train_loader,
+                optimizer=optimizer,
+                criterion=criterion,
+                device=device,
+            )
+            val_loss = evaluate_autoencoder(
+                model=model,
+                loader=val_loader,
+                criterion=criterion,
+                device=device,
+            )
+
+            fold_history.append(
+                {
+                    "epoch": epoch + 1,
+                    "train_loss": train_loss,
+                    "val_loss": val_loss,
+                }
+            )
 
             print(
                 f"Epoch {epoch + 1}/{cfg.epochs} - "
                 f"Train Loss: {train_loss:.6f} - "
-                f"Val Patch Loss: {val_loss:.6f} - "
-                f"Val FOV Acc: {val_acc:.4f}"
+                f"Val Loss: {val_loss:.6f}"
             )
 
-            if val_acc > best_val_acc:
-                best_val_acc = val_acc
-                best_targets = targets
-                best_preds = preds
-                best_epoch = epoch + 1
-                epochs_no_improve = 0
-                
+            if val_loss < best_fold_val_loss:
+                best_fold_val_loss = val_loss
+
+                fold_ckpt_path = os.path.join(artifact_dir, f"fold_{fold}_best_autoencoder.pt")
                 torch.save(
                     {
                         "fold": fold,
-                        "epoch": best_epoch,
-                        "best_val_acc": best_val_acc,
-                        "model_state_dict": model.state_dict(),
                         "config": asdict(cfg),
-                        "class_names": CLASS_NAMES,
+                        "model_state_dict": model.state_dict(),
+                        "train_mean": train_dataset.mean,
+                        "train_std": train_dataset.std,
+                        "in_channels": mat_reader.get_num_channels(),
+                        "latent_channels": cfg.latent_channels,
+                        "best_val_loss": best_fold_val_loss,
                     },
-                    os.path.join(artifact_dir, f"fold_{fold}_best.pt"),
+                    fold_ckpt_path,
                 )
-            else:
-                epochs_no_improve += 1
-                
-            if epochs_no_improve >= patience:
-                print(f"Early stopping at epoch {epoch + 1}")
-                break
 
-        assert best_targets is not None and best_preds is not None
-        report = str(
-            classification_report(
-                best_targets,
-                best_preds,
-                labels = list(range(len(CLASS_NAMES))),
-                target_names=CLASS_NAMES,
-                digits=4,
-                zero_division=0,
-            )
-        )
-        print(f"\nBest fold {fold} FOV classification report:\n{report}")
+                if best_fold_val_loss < best_global_val_loss:
+                    best_global_val_loss = best_fold_val_loss
+                    torch.save(
+                        {
+                            "fold": fold,
+                            "config": asdict(cfg),
+                            "model_state_dict": model.state_dict(),
+                            "train_mean": train_dataset.mean,
+                            "train_std": train_dataset.std,
+                            "in_channels": mat_reader.get_num_channels(),
+                            "latent_channels": cfg.latent_channels,
+                            "best_val_loss": best_fold_val_loss,
+                        },
+                        best_global_checkpoint_path,
+                    )
 
-        with open(os.path.join(artifact_dir, f"fold_{fold}_report.txt"), "w", encoding="utf-8") as f:
-            f.write(report)
+                    if cfg.save_reconstructions:
+                        recon_path = os.path.join(
+                            artifact_dir,
+                            f"best_global_fold_{fold}_reconstructions.png",
+                        )
+                        save_reconstruction_grid(
+                            model=model,
+                            loader=val_loader,
+                            device=device,
+                            out_path=recon_path,
+                            max_items=8,
+                        )
+
+        history_path = os.path.join(artifact_dir, f"fold_{fold}_history.json")
+        with open(history_path, "w", encoding="utf-8") as f:
+            json.dump(fold_history, f, indent=2)
 
         fold_results.append(
             {
-                "fold": float(fold), 
-                "best_val_acc": best_val_acc,
-                "best_epoch": best_epoch,
-                }
-            )
+                "fold": fold,
+                "best_val_loss": best_fold_val_loss,
+            }
+        )
 
-    mean_acc = float(np.mean([r["best_val_acc"] for r in fold_results]))
-    std_acc = float(np.std([r["best_val_acc"] for r in fold_results]))
+    mean_val_loss = float(np.mean([r["best_val_loss"] for r in fold_results]))
+    std_val_loss = float(np.std([r["best_val_loss"] for r in fold_results]))
 
     summary = {
         "fold_results": fold_results,
-        "mean_best_val_acc": mean_acc,
-        "std_best_val_acc": std_acc,
+        "mean_best_val_loss": mean_val_loss,
+        "std_best_val_loss": std_val_loss,
+        "best_global_val_loss": best_global_val_loss,
+        "best_global_checkpoint": best_global_checkpoint_path,
     }
 
     with open(os.path.join(artifact_dir, "summary.json"), "w", encoding="utf-8") as f:
@@ -492,11 +517,9 @@ def main() -> None:
 
     print("\n=== Summary ===")
     for r in fold_results:
-        epoch_str = f"(epoch {int(r['best_epoch'])})" if 'best_epoch' in r else ""
-        print(
-                f"Fold {int(r['fold'])}: best val FOV acc = {r['best_val_acc']:.4f} {epoch_str}"
-            )
-    print(f"Mean best val FOV acc: {mean_acc:.4f} ± {std_acc:.4f}")
+        print(f"Fold {r['fold']}: best val loss = {r['best_val_loss']:.6f}")
+    print(f"Mean best val loss: {mean_val_loss:.6f} ± {std_val_loss:.6f}")
+    print(f"Best global val loss: {best_global_val_loss:.6f}")
     print(f"Artifacts saved to: {artifact_dir}")
 
 
