@@ -1,3 +1,5 @@
+num folds: 5
+
 --- Final Results ---
 Mean CV Accuracy: 77.92% ± 2.34%
 Mean CV AUC: 85.17% ± 6.86%
@@ -14,3 +16,107 @@ weighted avg       0.78      0.78      0.78       154
 
 ACC: [0.7741935483870968, 0.8125, 0.7931034482758621, 0.7419354838709677, 0.7741935483870968]
 AUC: [0.8571428571428571, 0.8666666666666667, 0.9038461538461539, 0.7208333333333333, 0.9102564102564104]
+
+
+num folds: 10 (best taken from fold 2 or 3)
+
+--- Final Results ---
+Mean CV Accuracy: 76.46% ± 16.17%
+Mean CV AUC: 87.37% ± 13.78%
+
+Global Classification Report:
+              precision    recall  f1-score   support
+
+         HGC       0.81      0.74      0.77        84
+         IDC       0.71      0.79      0.75        70
+
+    accuracy                           0.76       154
+   macro avg       0.76      0.76      0.76       154
+weighted avg       0.76      0.76      0.76       154
+
+ACC: [0.7333333333333333, 1.0, 1.0, 0.75, 0.9333333333333333, 0.75, 0.75, 0.5625, 0.5, 0.6666666666666666]
+AUC: [0.9821428571428571, 1.0, 1.0, 0.8125, 0.9821428571428572, 0.921875, 0.84375, 0.5555555555555556, 0.71875, 0.92]
+
+Train Confusion Matrix (Fold 1):
+                 HGC         IDC
+       HGC         154          10
+       IDC           5         109
+Train Confusion Matrix (Fold 2):
+                 HGC         IDC
+       HGC         122           0
+       IDC           1         155
+Train Confusion Matrix (Fold 3):
+                 HGC         IDC
+       HGC         147           8
+       IDC           3         122
+Train Confusion Matrix (Fold 4):
+                 HGC         IDC
+       HGC         129           4
+       IDC           1         142
+Train Confusion Matrix (Fold 5):
+                 HGC         IDC
+       HGC         143           4
+       IDC           0         131
+Train Confusion Matrix (Fold 6):
+                 HGC         IDC
+       HGC         127           8
+       IDC           1         140
+Train Confusion Matrix (Fold 7):
+                 HGC         IDC
+       HGC         135          15
+       IDC           2         124
+Train Confusion Matrix (Fold 8):
+                 HGC         IDC
+       HGC         121          15
+       IDC          13         127
+Train Confusion Matrix (Fold 9):
+                 HGC         IDC
+       HGC         128          18
+       IDC           3         127
+Train Confusion Matrix (Fold 10):
+                 HGC         IDC
+       HGC         111          20
+       IDC           2         145
+       
+---
+
+Validation Confusion Matrix (Fold 1 - 73.33%):
+                 HGC         IDC
+       HGC           8           0
+       IDC           4           3
+Validation Confusion Matrix (Fold 2 - 100.00%):
+                 HGC         IDC
+       HGC           9           0
+       IDC           0           6
+Validation Confusion Matrix (Fold 3 - 100.00%):
+                 HGC         IDC
+       HGC           9           0
+       IDC           0           5
+Validation Confusion Matrix (Fold 4 - 75.00%):
+                 HGC         IDC
+       HGC           6           2
+       IDC           2           6
+Validation Confusion Matrix (Fold 5 - 93.33%):
+                 HGC         IDC
+       HGC           6           1
+       IDC           0           8
+Validation Confusion Matrix (Fold 6 - 75.00%):
+                 HGC         IDC
+       HGC           6           2
+       IDC           2           6
+Validation Confusion Matrix (Fold 7 - 75.00%):
+                 HGC         IDC
+       HGC           7           1
+       IDC           3           5
+Validation Confusion Matrix (Fold 8 - 56.25%):
+                 HGC         IDC
+       HGC           2           7
+       IDC           0           7
+Validation Confusion Matrix (Fold 9 - 50.00%):
+                 HGC         IDC
+       HGC           4           4
+       IDC           4           4
+Validation Confusion Matrix (Fold 10 - 66.67%):
+                 HGC         IDC
+       HGC           5           5
+       IDC           0           5
