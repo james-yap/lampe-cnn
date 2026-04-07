@@ -20,6 +20,8 @@ AUC: [0.8571428571428571, 0.8666666666666667, 0.9038461538461539, 0.720833333333
 
 num folds: 10 (best taken from fold 2 or 3)
 
+### FC (funnel 512-128-32-1): Balanced, Augmented (x2), 10 folds
+
 --- Final Results ---
 Mean CV Accuracy: 76.46% ± 16.17%
 Mean CV AUC: 87.37% ± 13.78%

@@ -1,6 +1,6 @@
 ### MicroNet + SVM (best recall). Unbalanced, unaugmented
 
-# splits: 5
+# splits: 5, poly
 --- Final Results ---
 Mean CV Accuracy: 68.86% ± 7.69%
 
@@ -19,7 +19,7 @@ weighted avg       0.73      0.69      0.68       154
 
 ---
 
-# splits: 10
+# splits: 10, poly
 --- Final Results ---
 Mean CV Accuracy: 76.67% ± 11.98%
 
@@ -55,6 +55,8 @@ Global Classification Report:
 weighted avg       0.72      0.69      0.68       154
 
 [0.8064516129032258, 0.71875, 0.6206896551724138, 0.5806451612903226, 0.7096774193548387]
+
+### SVM: Balanced, Augmented (x2), 10 folds
 
 # splits: 10
 --- Final Results ---
