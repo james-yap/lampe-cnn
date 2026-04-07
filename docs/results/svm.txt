@@ -1,114 +1,6 @@
-MicroNet + SVM (best recall). Unbalanced, unaugmented, 10 folds
-
-# splits: 10
-Fold 1: PCA reduced features to 41 dims
-Fold 1 Accuracy: 93.75%
-Confusion Matrix (Fold 1):
-                 HGC         IDC
-       HGC           8           1
-       IDC           0           7
-Fold 2: PCA reduced features to 43 dims
-Fold 2 Accuracy: 80.00%
-Confusion Matrix (Fold 2):
-                 HGC         IDC
-       HGC           6           3
-       IDC           0           6
-Fold 3: PCA reduced features to 41 dims
-Fold 3 Accuracy: 93.33%
-Confusion Matrix (Fold 3):
-                 HGC         IDC
-       HGC           2           0
-       IDC           1          12
-Fold 4: PCA reduced features to 40 dims
-Fold 4 Accuracy: 86.67%
-Confusion Matrix (Fold 4):
-                 HGC         IDC
-       HGC           1           1
-       IDC           1          12
-Fold 5: PCA reduced features to 41 dims
-Fold 5 Accuracy: 73.33%
-Confusion Matrix (Fold 5):
-                 HGC         IDC
-       HGC           4           3
-       IDC           1           7
-Fold 6: PCA reduced features to 41 dims
-Fold 6 Accuracy: 53.33%
-Confusion Matrix (Fold 6):
-                 HGC         IDC
-       HGC           6           5
-       IDC           2           2
-Fold 7: PCA reduced features to 41 dims
-Fold 7 Accuracy: 80.00%
-Confusion Matrix (Fold 7):
-                 HGC         IDC
-       HGC           6           2
-       IDC           1           6
-Fold 8: PCA reduced features to 40 dims
-Fold 8 Accuracy: 68.75%
-Confusion Matrix (Fold 8):
-                 HGC         IDC
-       HGC           7           5
-       IDC           0           4
-Fold 9: PCA reduced features to 42 dims
-Fold 9 Accuracy: 68.75%
-Confusion Matrix (Fold 9):
-                 HGC         IDC
-       HGC           4           4
-       IDC           1           7
-Fold 10: PCA reduced features to 41 dims
-Fold 10 Accuracy: 68.75%
-Confusion Matrix (Fold 10):
-                 HGC         IDC
-       HGC          11           5
-       IDC           0           0
-
---- Final Results ---
-Mean CV Accuracy: 76.67% ± 11.98%
-
-Global Classification Report:
-              precision    recall  f1-score   support
-
-         HGC       0.89      0.65      0.75        84
-         IDC       0.68      0.90      0.78        70
-
-    accuracy                           0.77       154
-   macro avg       0.79      0.78      0.77       154
-weighted avg       0.80      0.77      0.76       154
-
----
+### MicroNet + SVM (best recall). Unbalanced, unaugmented
 
 # splits: 5
-Fold 1: PCA reduced features to 39 dims
-Fold 1 Accuracy: 70.97%
-Confusion Matrix (Fold 1):
-                 HGC         IDC
-       HGC          14           7
-       IDC           2           8
-Fold 2: PCA reduced features to 41 dims
-Fold 2 Accuracy: 73.33%
-Confusion Matrix (Fold 2):
-                 HGC         IDC
-       HGC          16           8
-       IDC           0           6
-Fold 3: PCA reduced features to 38 dims
-Fold 3 Accuracy: 77.42%
-Confusion Matrix (Fold 3):
-                 HGC         IDC
-       HGC           8           2
-       IDC           5          16
-Fold 4: PCA reduced features to 38 dims
-Fold 4 Accuracy: 67.74%
-Confusion Matrix (Fold 4):
-                 HGC         IDC
-       HGC           2           8
-       IDC           2          19
-Fold 5: PCA reduced features to 38 dims
-Fold 5 Accuracy: 54.84%
-Confusion Matrix (Fold 5):
-                 HGC         IDC
-       HGC           5          14
-       IDC           0          12
-
 --- Final Results ---
 Mean CV Accuracy: 68.86% ± 7.69%
 
@@ -122,73 +14,49 @@ Global Classification Report:
    macro avg       0.72      0.70      0.68       154
 weighted avg       0.73      0.69      0.68       154
 
+[0.7096774193548387, 0.7333333333333333, 0.7741935483870968, 0.6774193548387096, 0.5483870967741935]
+
 
 ---
 
+# splits: 10
+--- Final Results ---
+Mean CV Accuracy: 76.67% ± 11.98%
+
+Global Classification Report:
+              precision    recall  f1-score   support
+
+         HGC       0.89      0.65      0.75        84
+         IDC       0.68      0.90      0.78        70
+
+    accuracy                           0.77       154
+   macro avg       0.79      0.78      0.77       154
+weighted avg       0.80      0.77      0.76       154
+
+[0.9375, 0.8, 0.9333333333333333, 0.8666666666666667, 0.7333333333333333, 0.5333333333333333, 0.8, 0.6875, 0.6875, 0.6875]
+
+---
+
+
 ### Balanced, Augmented, 10 folds
 
-# splits: 10
-Fold 1: PCA reduced features to 42 dims
-Fold 1 Accuracy: 86.67%
-Confusion Matrix (Fold 1):
-                 HGC         IDC
-       HGC           7           2
-       IDC           0           6
-Fold 2: PCA reduced features to 41 dims
-Fold 2 Accuracy: 100.00%
-Confusion Matrix (Fold 2):
-                 HGC         IDC
-       HGC           8           0
-       IDC           0           7
-Fold 3: PCA reduced features to 41 dims
-Fold 3 Accuracy: 71.43%
-Confusion Matrix (Fold 3):
-                 HGC         IDC
-       HGC           5           4
-       IDC           0           5
-Fold 4: PCA reduced features to 41 dims
-Fold 4 Accuracy: 56.25%
-Confusion Matrix (Fold 4):
-                 HGC         IDC
-       HGC           3           5
-       IDC           2           6
-Fold 5: PCA reduced features to 41 dims
-Fold 5 Accuracy: 93.33%
-Confusion Matrix (Fold 5):
-                 HGC         IDC
-       HGC           6           1
-       IDC           0           8
-Fold 6: PCA reduced features to 41 dims
-Fold 6 Accuracy: 80.00%
-Confusion Matrix (Fold 6):
-                 HGC         IDC
-       HGC           7           3
-       IDC           0           5
-Fold 7: PCA reduced features to 42 dims
-Fold 7 Accuracy: 87.50%
-Confusion Matrix (Fold 7):
-                 HGC         IDC
-       HGC           6           2
-       IDC           0           8
-Fold 8: PCA reduced features to 41 dims
-Fold 8 Accuracy: 50.00%
-Confusion Matrix (Fold 8):
-                 HGC         IDC
-       HGC           1           7
-       IDC           1           7
-Fold 9: PCA reduced features to 41 dims
-Fold 9 Accuracy: 56.25%
-Confusion Matrix (Fold 9):
-                 HGC         IDC
-       HGC           3           5
-       IDC           2           6
-Fold 10: PCA reduced features to 41 dims
-Fold 10 Accuracy: 62.50%
-Confusion Matrix (Fold 10):
-                 HGC         IDC
-       HGC           4           5
-       IDC           1           6
+# splits: 5
+--- Final Results ---
+Mean CV Accuracy: 68.72% ± 7.94%
 
+Global Classification Report:
+              precision    recall  f1-score   support
+
+         HGC       0.81      0.56      0.66        84
+         IDC       0.61      0.84      0.71        70
+
+    accuracy                           0.69       154
+   macro avg       0.71      0.70      0.69       154
+weighted avg       0.72      0.69      0.68       154
+
+[0.8064516129032258, 0.71875, 0.6206896551724138, 0.5806451612903226, 0.7096774193548387]
+
+# splits: 10
 --- Final Results ---
 Mean CV Accuracy: 74.39% ± 16.65%
 
@@ -201,3 +69,5 @@ Global Classification Report:
     accuracy                           0.74       154
    macro avg       0.77      0.75      0.74       154
 weighted avg       0.78      0.74      0.74       154
+
+[0.8666666666666667, 1.0, 0.7142857142857143, 0.5625, 0.9333333333333333, 0.8, 0.875, 0.5, 0.5625, 0.625]
