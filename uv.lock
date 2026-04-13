@@ -958,6 +958,18 @@ wheels = [
 ]
 
 [[package]]
+name = "jupyterlab-vim"
+version = "4.1.4"
+source = { registry = "https://pypi.org/simple" }
+dependencies = [
+    { name = "jupyterlab" },
+]
+sdist = { url = "https://files.pythonhosted.org/packages/17/d8/3ff5da56fc66a7b751925810c4e4b6a888c8b1e7a7c53b38e5492d1357fd/jupyterlab_vim-4.1.4.tar.gz", hash = "sha256:abf2891aafb32f0cb94ad98321ae7ebcbe0cabe523d38d80d569c0a50b85225a", size = 153262, upload-time = "2024-09-16T09:17:23.986Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/a6/2f/65805236702729ebaa19ba34bd977a4582df2a020a365f8cc49445de2a8d/jupyterlab_vim-4.1.4-py3-none-any.whl", hash = "sha256:13c29ff1fd385fddf33eb85a8b16441be69c62032870bb97a3054b2cf00ab135", size = 67065, upload-time = "2024-09-16T09:17:21.928Z" },
+]
+
+[[package]]
 name = "jupyterlab-widgets"
 version = "3.0.16"
 source = { registry = "https://pypi.org/simple" }
@@ -1041,6 +1053,7 @@ dependencies = [
     { name = "albumentations" },
     { name = "grad-cam" },
     { name = "ipywidgets" },
+    { name = "jupyterlab-vim" },
     { name = "matplotlib" },
     { name = "notebook" },
     { name = "numpy" },
@@ -1066,6 +1079,7 @@ requires-dist = [
     { name = "albumentations", specifier = ">=2.0.8" },
     { name = "grad-cam", specifier = ">=1.5.5" },
     { name = "ipywidgets", specifier = ">=8.1.8" },
+    { name = "jupyterlab-vim", specifier = ">=4.1.4" },
     { name = "matplotlib", specifier = ">=3.10.8" },
     { name = "notebook", specifier = ">=7.5.5" },
     { name = "numpy", specifier = ">=2.4.3" },
