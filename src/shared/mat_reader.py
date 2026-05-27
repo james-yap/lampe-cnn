@@ -27,11 +27,15 @@ class MatReader:
     # shape: np.ndarray(n samples,)
     patient_ids: np.ndarray
 
+    # shape: np.ndarray(n samples,)
+    fov_ids: np.ndarray
+
     def __init__(self, matpath: str):
 
         images_list: list[np.ndarray] = []
         labels_list: list[int] = []
         ids_list: list[str] = []
+        fov_ids_list: list[str] = []
 
         # Verify files exist
         for classname in CLASS_NAMES:
@@ -89,6 +93,9 @@ class MatReader:
                 images_list.append(multimodal_data)
                 labels_list.extend([CLASS_NAMES.index(classname)] * len(names))
                 ids_list.extend([f"{name[0]}_{name[1]}" for name in names])
+                fov_ids_list.extend(
+                    [f"{name[0]}_{name[1]}_{name[3]}" for name in names]
+                )
 
                 # if classname == "LGC":
                 #     mirrored_data = np.flip(multimodal_data, axis=-1)
@@ -99,6 +106,7 @@ class MatReader:
         self.images = np.concatenate(images_list, axis=0)
         self.class_labels = np.array(labels_list)
         self.patient_ids = np.array(ids_list)
+        self.fov_ids = np.array(fov_ids_list)
 
         # Geometric augmentation: reflection across vertical axis (flip left-right)
         # flipped = np.flip(self.images, axis=-1)
