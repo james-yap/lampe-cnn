@@ -1,0 +1,46 @@
+name: lampe-cnn
+
+services:
+  jupyter:
+    build:
+      context: .
+    image: lampe-cnn-jupyter:latest
+    working_dir: /workspace/lampe
+    ports:
+      # Keep direct LAN/DMZ access available at http://<host>:8888.
+      - "8888:8888"
+    environment:
+      UV_PROJECT_ENVIRONMENT: /opt/lampe-venv
+      LAMPE_DATASET_DIR: /data/lampe/dataset
+      LAMPE_MODEL_PATH: /data/lampe/model_v2.pth
+      JUPYTER_TOKEN: ${JUPYTER_TOKEN:-lampe}
+    volumes:
+      # Live-mount the repo so notebook edits persist on the host.
+      - .:/workspace/lampe
+      # Mount host data/model artifacts at clean, hardcoded container paths used by the notebook.
+      - ${LAMPE_HOST_DATASET_DIR:?Set LAMPE_HOST_DATASET_DIR in .env}:/data/lampe/dataset:ro
+      - ${LAMPE_HOST_MODEL_PATH:?Set LAMPE_HOST_MODEL_PATH in .env}:/data/lampe/model_v2.pth:ro
+    command:
+      - uv
+      - run
+      - jupyter
+      - lab
+      - --no-browser
+      - --ip=0.0.0.0
+      - --port=8888
+      - --ServerApp.allow_remote_access=True
+      - --ServerApp.trust_xheaders=True
+
+  cloudflared:
+    image: cloudflare/cloudflared:latest
+    restart: unless-stopped
+    profiles:
+      - tunnel
+    depends_on:
+      - jupyter
+    command:
+      - tunnel
+      - --no-autoupdate
+      - run
+      - --token
+      - ${CLOUDFLARE_TUNNEL_TOKEN:-}

@@ -1,0 +1,27 @@
+.git
+.jj
+.venv
+__pycache__
+*.py[cod]
+*.egg-info
+.pytest_cache
+.ruff_cache
+.mypy_cache
+.pyright
+.DS_Store
+.swp
+.env
+.env.local
+
+# Data and generated artifacts stay on the host and are bind-mounted when needed.
+lampe_dataset/
+playground_dataset/
+artifacts/
+**/*.pth
+**/*.pt
+**/*.ckpt
+
+# Notebook/runtime noise.
+.ipynb_checkpoints/
+profile_default/
+ipython_config.py
