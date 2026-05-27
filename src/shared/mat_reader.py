@@ -21,8 +21,13 @@ class MatReader:
     images: np.ndarray
 
     # shape: np.ndarray(n samples,)
-    # 0: Healthy, 1: LGC, 2: HGC, 3: IDC
+    # 0: HGC, 1: IDC
     class_labels: np.ndarray
+
+    # Known duplicate FOVs in the stable dataset: indices 19/38 were originally
+    # labelled HGC, while the same FOV IDs also appear as IDC at indices 103/112.
+    # Treat the duplicated FOVs as IDC (class 1) post-hoc.
+    _FORCE_CLASS_1_INDICES = np.array([19, 38], dtype=np.int64)
 
     # shape: np.ndarray(n samples,)
     patient_ids: np.ndarray
@@ -107,6 +112,9 @@ class MatReader:
         self.class_labels = np.array(labels_list)
         self.patient_ids = np.array(ids_list)
         self.fov_ids = np.array(fov_ids_list)
+
+        if self.get_num_fovs() > int(self._FORCE_CLASS_1_INDICES.max()):
+            self.class_labels[self._FORCE_CLASS_1_INDICES] = 1
 
         # Geometric augmentation: reflection across vertical axis (flip left-right)
         # flipped = np.flip(self.images, axis=-1)
