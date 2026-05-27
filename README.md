@@ -100,7 +100,7 @@ The source code lives under `src/` and is structured as a Python package (`lampe
 uv pip install -e .
 ```
 
-This registers `src/` as the package root so that `shared`, `architectures`, and `cli` are importable from any script. Re-run this command whenever `pyproject.toml` changes (e.g. after adding a dependency).
+This registers `src/` as the package root so that `shared`, `architectures`, and `cli` are importable from any script. Re-run this command whenever `pyproject.toml` changes (e.g. after adding a dependency). The Docker image runs this same editable install during build.
 
 For VS Code / Pylance to resolve imports correctly, ensure the interpreter is set to the project's virtual environment:
 

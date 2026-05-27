@@ -31,4 +31,5 @@
 
 - Keep Python dependency changes in `pyproject.toml`/`uv.lock`; use `uv add <package>` rather than editing lock files manually.
 - Keep the Docker virtual environment outside the repository via `UV_PROJECT_ENVIRONMENT=/opt/lampe-venv`; this avoids using a host `.venv` inside Linux containers.
+- Keep `uv pip install -e .` in the Docker build after the source copy so `shared`, `architectures`, and CLI imports resolve inside Jupyter.
 - `src/shared/constants.py` selects `cuda`, then `mps`, then `cpu`; do not hardcode `DEVICE = "mps"` because Docker Linux containers need a CPU/CUDA fallback.

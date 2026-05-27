@@ -3,6 +3,8 @@ FROM ghcr.io/astral-sh/uv:python3.13-bookworm-slim
 ENV PYTHONUNBUFFERED=1 \
     PYTHONDONTWRITEBYTECODE=1 \
     UV_PROJECT_ENVIRONMENT=/opt/lampe-venv \
+    VIRTUAL_ENV=/opt/lampe-venv \
+    PATH="/opt/lampe-venv/bin:$PATH" \
     UV_LINK_MODE=copy \
     LAMPE_DATASET_DIR=/data/lampe/dataset \
     LAMPE_MODEL_PATH=/data/lampe/model_v2.pth
@@ -29,7 +31,8 @@ RUN uv sync --frozen --no-install-project
 
 COPY --chown=lampe:lampe . .
 
-RUN uv sync --frozen
+RUN uv sync --frozen \
+    && uv pip install -e .
 
 EXPOSE 8888
 
